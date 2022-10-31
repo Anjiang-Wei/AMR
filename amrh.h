@@ -25,6 +25,8 @@ struct Grid {
     printf(") %ld %.2e GB\n", data_size, data_size * sizeof(T) / 1.e9);
   }
 
+  ~Grid() {delete[] data;}
+
   void getCoor(const int (&index)[D], double (&coor)[D]) {
 
     for(int dim = 0; dim < D; dim++)
