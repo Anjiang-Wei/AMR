@@ -1,8 +1,7 @@
 #include <stdio.h>
 
 // COMPILE-TIME POWER OPERATION
-constexpr unsigned ipow(unsigned num, unsigned pow)
-{
+constexpr unsigned ipow(unsigned num, unsigned pow) {
     return (pow >= sizeof(unsigned ) * 8) ? 0 :
         pow == 0 ? 1 : num * ipow(num, pow - 1);
 }
