@@ -236,4 +236,23 @@ int main(int argc, char *argv[]) {
         }
      });
   }
+
+  // Dump patches
+  constexpr unsigned long idx_anchor_1 = 0;
+  constexpr unsigned long idx_anchor_2 = PSIZE * PSIZE - 1;
+  FILE * fp;
+  fp = fopen("output_patch_layouts.dat", "w");
+  fprintf(fp, "%10s, %23s, %23s, %23s, %23s\n", "Level", "x-coord anchor 1", "y-coord anchor 1", "x-coord anchor 2", "y-coord anchor 2");
+  for (int l = 0; l < numlevel; l++) {
+    grid.forEachPatchInLevel(l, LAMBDA_PATCH {
+        const double dx = Lx / (dim[0] * ipow(2, l));
+        const double dy = Ly / (dim[1] * ipow(2, l));
+        const double x1 = p.data[idx_anchor_1].x - 0.5*dx;
+        const double y1 = p.data[idx_anchor_1].x - 0.5*dy;
+        const double x2 = p.data[idx_anchor_2].x + 0.5*dx;
+        const double y2 = p.data[idx_anchor_2].x + 0.5*dy;
+        fprintf(fp, "%10d, %23.16e, %23.16e, %23.16e, %23.16e\n", l, x1, y1, x2, y2);
+    });
+  }
+  fclose(fp);
 }
