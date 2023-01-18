@@ -8,3 +8,4 @@ void main_task(const Task* task, const std::vector<PhysicalRegion>& rgns, Contex
 
     printf("HelloWorld from Legion main_task!\n TODO: Change util/util.cpp/main_task\n\n");
 }
+

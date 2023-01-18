@@ -3,6 +3,7 @@
 #define _LEGION_HOOK_H
 
 #include "legion.h"
+#include <map>
 
 typedef Legion::Rect <1, long long int> Box1D;
 typedef Legion::Rect <2, long long int> Box2D;
@@ -12,7 +13,7 @@ typedef Legion::Point<1, long long int> Point1D;
 typedef Legion::Point<2, long long int> Point2D;
 typedef Legion::Point<3, long long int> Point3D;
 
-typedef Legion::IndexSpace       IndexSpece;
+typedef Legion::IndexSpace       IndexSpace;
 typedef Legion::IndexPartition   IndexPartition;
 typedef Legion::Context          Context;
 typedef Legion::Runtime          Runtime;
@@ -25,5 +26,6 @@ typedef Legion::Task             Task;
 typedef Legion::FieldSpace       FieldSpace;
 typedef Legion::FieldID          FieldID;
 typedef Legion::TaskArgument     TaskArguent;
+typedef Legion::FieldAllocator   FieldAllocator;
 
 #endif

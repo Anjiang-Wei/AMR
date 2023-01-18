@@ -4,6 +4,8 @@
 
 #include "legion_hook.h"
 
+typedef double Real;
+
 constexpr int MAIN_TASK_ID = 0;
 
 extern void main_task(const Task*, const std::vector<PhysicalRegion>&, Context, Runtime*);
