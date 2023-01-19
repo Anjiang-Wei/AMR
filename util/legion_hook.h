@@ -13,19 +13,25 @@ typedef Legion::Point<1, long long int> Point1D;
 typedef Legion::Point<2, long long int> Point2D;
 typedef Legion::Point<3, long long int> Point3D;
 
-typedef Legion::IndexSpace       IndexSpace;
-typedef Legion::IndexPartition   IndexPartition;
-typedef Legion::Context          Context;
-typedef Legion::Runtime          Runtime;
-typedef Legion::PhysicalRegion   PhysicalRegion;
-typedef Legion::LogicalRegion    LogicalRegion;
-typedef Legion::LogicalPartition LogicalPartition;
-typedef Legion::DomainPoint      DomainPoint;
-typedef Legion::Domain           Domain;
-typedef Legion::Task             Task;
-typedef Legion::FieldSpace       FieldSpace;
-typedef Legion::FieldID          FieldID;
-typedef Legion::TaskArgument     TaskArguent;
-typedef Legion::FieldAllocator   FieldAllocator;
+typedef Legion::IndexSpace          IndexSpace;
+typedef Legion::IndexPartition      IndexPartition;
+typedef Legion::Context             Context;
+typedef Legion::Runtime             Runtime;
+typedef Legion::PhysicalRegion      PhysicalRegion;
+typedef Legion::LogicalRegion       LogicalRegion;
+typedef Legion::LogicalPartition    LogicalPartition;
+typedef Legion::DomainPoint         DomainPoint;
+typedef Legion::Domain              Domain;
+typedef Legion::Task                Task;
+typedef Legion::FieldSpace          FieldSpace;
+typedef Legion::FieldID             FieldID;
+typedef Legion::TaskArgument        TaskArguent;
+typedef Legion::FieldAllocator      FieldAllocator;
+
+typedef Legion::PointInRectIterator<1> PointInBox1D;
+typedef Legion::PointInRectIterator<2> PointInBox2D;
+typedef Legion::PointInRectIterator<3> PointInBox3D;
+
+template<legion_privilege_mode_t privil, typename dtype, int dim> using FieldAccessor = Legion::FieldAccessor<privil, dtype, dim>;
 
 #endif
