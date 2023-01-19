@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include "util.h"
+#include "numerics.h"
 
 constexpr unsigned long PATCH_SIZE = 8;
 constexpr unsigned long NUM_PATCHES_X = 7;
