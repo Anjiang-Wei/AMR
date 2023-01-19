@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include "util.h"
+#include <hdf5.h>
 #include "numerics.h"
 
 constexpr unsigned long PATCH_SIZE    = 8;
@@ -38,10 +39,86 @@ enum class COORD_ID {
     X, Y, Z, SIZE
 };
 
+enum class COPY_ID {
+    FID_CP,
+};
+
 
 enum TASK_ID {
     TOP_LEVEL, ELEM_OP
 };
+
+
+bool generate_hdf_file(const char *file_name, const char *dataset_name, int num_elements)
+{
+    // strip off any filename prefix starting with a colon
+    {
+        const char *pos = strchr(file_name, ':');
+        if (pos) file_name = pos + 1;
+    }
+
+    hid_t file_id = H5Fcreate(file_name, H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
+    if (file_id < 0) {
+        printf("H5Fcreate failed: %lld\n", (long long)file_id);
+        return false;
+    }
+
+    hsize_t dims[1];
+    dims[0] = num_elements;
+    hid_t dataspace_id = H5Screate_simple(1, dims, NULL);
+    if (dataspace_id < 0) {
+        printf("H5Screate_simple failed: %lld\n", (long long)dataspace_id);
+        H5Fclose(file_id);
+        return false;
+    }
+
+    hid_t loc_id = file_id;
+    std::vector<hid_t> group_ids;
+    // leading slash in dataset path is optional - ignore if present
+    if (*dataset_name == '/') dataset_name++;
+    while (true) {
+        const char *pos = strchr(dataset_name, '/');
+        if (!pos) break;
+        char *group_name = strndup(dataset_name, pos - dataset_name);
+        hid_t id = H5Gcreate2(loc_id, group_name,
+                H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+        if (id < 0) {
+            printf("H5Gcreate2 failed: %lld\n", (long long)id);
+            for (std::vector<hid_t>::const_iterator it = group_ids.begin(); it != group_ids.end(); ++it) {
+                H5Gclose(*it);
+            }
+            H5Sclose(dataspace_id);
+            H5Fclose(file_id);
+            return false;
+        }
+        group_ids.push_back(id);
+        loc_id = id;
+        dataset_name = pos + 1;
+    }
+
+    hid_t dataset = H5Dcreate2(loc_id, dataset_name,
+                    H5T_IEEE_F64LE, dataspace_id,
+                    H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+    if (dataset < 0) {
+        printf("H5Dcreate2 failed: %lld\n", (long long)dataset);
+        for(std::vector<hid_t>::const_iterator it = group_ids.begin(); it != group_ids.end(); ++it) {
+            H5Gclose(*it);
+        }
+        H5Sclose(dataspace_id);
+        H5Fclose(file_id);
+        return false;
+    }
+
+    // close things up - attach will reopen later
+    H5Dclose(dataset);
+    for(std::vector<hid_t>::const_iterator it = group_ids.begin(); it != group_ids.end(); ++it) {
+        H5Gclose(*it);
+    }
+    H5Sclose(dataspace_id);
+    H5Fclose(file_id);
+    return true;
+}
+
 
 void initBaseGrid(Context& ctx, Runtime* rt, const int fs_size, LogicalRegion& region_of_fields, LogicalPartition& patches)
 {
@@ -166,7 +243,43 @@ void top_level_task(const Task* task, const std::vector<PhysicalRegion>& rgns, C
     printf("\n\nStart time integration:\n");
     printf("Simulation done!!!\n");
 
+    // Prepare for copy
+    FieldSpace cp_fs = rt->create_field_space(ctx);
+    {
+        FieldAllocator allocator = rt->create_field_allocator(ctx, cp_fs);
+        allocator.allocate_field(sizeof(Real), static_cast<int>(COPY_ID::FID_CP));
+    }
+    LogicalRegion cp_lr = rt->create_logical_region(ctx, rgn_coord.get_index_space(), cp_fs);
 
+    char hdf5_file_name[256];
+    char hdf5_dataset_name[256];
+    strcpy(hdf5_file_name, "filename");
+    strcpy(hdf5_dataset_name, "FID_CP");
+
+    PhysicalRegion cp_pr;
+
+    // create the HDF5 file first - attach wants it to already exist
+    int num_elements = 1000;
+    bool ok = generate_hdf_file(hdf5_file_name, hdf5_dataset_name, num_elements);
+    assert(ok);
+    std::map<FieldID,const char*> field_map;
+    field_map[static_cast<Legion::FieldID>(PVARS_ID::VEL_X)] = hdf5_dataset_name;
+    printf("Checkpointing data to HDF5 file '%s' (dataset='%s')\n",
+            hdf5_file_name, hdf5_dataset_name);
+    AttachLauncher al(LEGION_EXTERNAL_HDF5_FILE, rgn_cvars, rgn_cvars);
+    al.attach_hdf5(hdf5_file_name, field_map, LEGION_FILE_READ_WRITE);
+    cp_pr = rt->attach_external_resource(ctx, al);
+
+    CopyLauncher copy_launcher;
+    copy_launcher.add_copy_requirements(
+        RegionRequirement(rgn_coord, READ_ONLY, EXCLUSIVE, rgn_coord),
+        RegionRequirement(cp_lr, WRITE_DISCARD, EXCLUSIVE, cp_lr));
+    copy_launcher.add_src_field(0, static_cast<Legion::FieldID>(PVARS_ID::VEL_X));
+    copy_launcher.add_dst_field(0, static_cast<Legion::FieldID>(COPY_ID::FID_CP));
+    rt->issue_copy_operation(ctx, copy_launcher);
+
+    Future f = rt->detach_external_resource(ctx, cp_pr);
+    f.get_void_result(true /*silence warnings*/);
 }
 
 
