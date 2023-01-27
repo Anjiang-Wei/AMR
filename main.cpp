@@ -6,6 +6,7 @@
 constexpr unsigned long PATCH_SIZE    = 8;
 constexpr unsigned long NUM_PATCHES_X = 8;
 constexpr unsigned long NUM_PATCHES_Y = 8;
+constexpr unsigned long STENCIL_WIDTH = 5;
 constexpr Real          t_final       = 10.0;
 constexpr Real          viscosity     = 10.0;
 constexpr Real          Prandtl       = 1.0;
@@ -30,6 +31,7 @@ enum class STAGE3_CVARS_ID {
 // Fieldspace of buffer variables
 enum class BVARS_ID {
     PRSES,
+    DUDX, DUDY, DVDX, DVDY,
     SIZE
 };
 
@@ -120,7 +122,7 @@ bool generate_hdf_file(const char *file_name, const char *dataset_name, int num_
 }
 
 
-void initBaseGrid(Context& ctx, Runtime* rt, const int fs_size, LogicalRegion& region_of_fields, LogicalPartition& patches)
+void initBaseGrid(Context& ctx, Runtime* rt, const int fs_size, LogicalRegion& region_of_fields, LogicalPartition& patches_interior, LogicalPartition& patches_extended)
 {
     Box2D grid_bounds = Box2D(Point2D(0,0), Point2D(NUM_PATCHES_X*PATCH_SIZE-1, NUM_PATCHES_Y*PATCH_SIZE-1));
     IndexSpace grid_isp = rt->create_index_space(ctx, grid_bounds);
@@ -149,7 +151,15 @@ void initBaseGrid(Context& ctx, Runtime* rt, const int fs_size, LogicalRegion& r
         }
     }
     IndexPartition idx_partition = rt->create_partition_by_domain(ctx, grid_isp, domain_map, color_isp);
-    patches = rt->get_logical_partition(ctx, region_of_fields, idx_partition);
+    patches_interior = rt->get_logical_partition(ctx, region_of_fields, idx_partition);
+
+    Transform2D transform;
+    transform[0][0] = PATCH_SIZE;
+    transform[1][1] = PATCH_SIZE;
+    constexpr unsigned long NUM_GHOSTS = STENCIL_WIDTH / 2;
+    Box2D extent(Point2D(-NUM_GHOSTS, -NUM_GHOSTS), Point2D(PATCH_SIZE-1+NUM_GHOSTS, PATCH_SIZE-1+NUM_GHOSTS));
+    IndexPartition idx_part_ext = rt->create_partition_by_restriction(ctx, grid_isp, color_isp, transform, extent);
+    patches_extended = rt->get_logical_partition(ctx, region_of_fields, idx_part_ext);
 }
 
 
@@ -157,6 +167,34 @@ void initBaseGrid(Context& ctx, Runtime* rt, const int fs_size, LogicalRegion& r
 //void elem_op_task(const Task* task, const std::vector<PhysicalRegion>& rgns, Context ctx, Runtime* rt) {
 //    Op op_functor = task->args;
 //}
+
+void stencil_operation_demo_task(const Task* task, const std::vector<PhysicalRegion>& rgns, Context ctx, Runtime* rt) {
+    Real* args = reinterpret_cast<Real*>(task->args);
+    const Real inv_dx = 1.0 / args[0];
+    const Real inv_dy = 1.0 / args[1];
+    const unsigned long NUM_GHOSTS = STENCIL_WIDTH / 2;
+    Box2D isp_domain = rt->get_index_space_domain(ctx, task->regions[0].region.get_index_space());
+    Box2D isp_domain_interior = Box2D(isp_domain.lo+Point2D(NUM_GHOSTS, NUM_GHOSTS), isp_domain.hi-Point2D(NUM_GHOSTS, NUM_GHOSTS));
+    const PhysicalRegion& rgn_pvars = rgns[0];
+    const PhysicalRegion& rgn_bvars = rgns[1];
+    const FieldAccessor<READ_ONLY, Real, 2> u  (rgn_pvars, static_cast<int>(PVARS_ID::VEL_X)  );
+    const FieldAccessor<READ_ONLY, Real, 2> v  (rgn_pvars, static_cast<int>(PVARS_ID::VEL_Y)  );
+    const FieldAccessor<READ_ONLY, Real, 2> T  (rgn_pvars, static_cast<int>(PVARS_ID::TEMP)   );
+    const FieldAccessor<WRITE_DISCARD, Real, 2> dudx(rgn_pvars, static_cast<int>(BVARS_ID::DUDX));
+    const FieldAccessor<WRITE_DISCARD, Real, 2> dudy(rgn_pvars, static_cast<int>(BVARS_ID::DUDY));
+    const FieldAccessor<WRITE_DISCARD, Real, 2> dvdx(rgn_pvars, static_cast<int>(BVARS_ID::DVDX));
+    const FieldAccessor<WRITE_DISCARD, Real, 2> dvdy(rgn_pvars, static_cast<int>(BVARS_ID::DVDY));
+    for (PointInBox2D ij(isp_domain_interior); ij(); ij++) {
+            Point2D ij_e1 = *ij + Point2D( 1, 0);
+            Point2D ij_w1 = *ij + Point2D(-1, 0);
+            Point2D ij_n1 = *ij + Point2D( 0,+1);
+            Point2D ij_s1 = *ij + Point2D( 0,-1);
+            dudx[*ij] = 0.5 * inv_dx * (u[ij_e1] - u[ij_w1]);
+            dvdx[*ij] = 0.5 * inv_dx * (v[ij_e1] - v[ij_w1]);
+            dudy[*ij] = 0.5 * inv_dy * (u[ij_n1] - u[ij_s1]);
+            dvdy[*ij] = 0.5 * inv_dy * (v[ij_n1] - v[ij_s1]);
+    }
+}
 
 void set_initial_condition_task(const Task* task, const std::vector<PhysicalRegion>& rgns, Context ctx, Runtime* rt) {
 
@@ -224,16 +262,20 @@ void top_level_task(const Task* task, const std::vector<PhysicalRegion>& rgns, C
     LogicalRegion    rgn_cvars;
     LogicalRegion    rgn_pvars;
     LogicalRegion    rgn_bvars;
-    LogicalPartition patches_coord;
-    LogicalPartition patches_cvars;
-    LogicalPartition patches_pvars;
-    LogicalPartition patches_bvars;
+    LogicalPartition patches_int_coord;
+    LogicalPartition patches_int_cvars;
+    LogicalPartition patches_int_pvars;
+    LogicalPartition patches_int_bvars;
+    LogicalPartition patches_ext_coord;
+    LogicalPartition patches_ext_cvars;
+    LogicalPartition patches_ext_pvars;
+    LogicalPartition patches_ext_bvars;
 
     printf("Call \"initBaseGrid\" from \"top_level_task\" ... ");
-    initBaseGrid(ctx, rt, static_cast<int>(STAGE3_CVARS_ID::SIZE), rgn_cvars, patches_cvars);
-    initBaseGrid(ctx, rt, static_cast<int>(       PVARS_ID::SIZE), rgn_pvars, patches_pvars);
-    initBaseGrid(ctx, rt, static_cast<int>(       BVARS_ID::SIZE), rgn_bvars, patches_bvars);
-    initBaseGrid(ctx, rt, static_cast<int>(       COORD_ID::SIZE), rgn_coord, patches_coord);
+    initBaseGrid(ctx, rt, static_cast<int>(STAGE3_CVARS_ID::SIZE), rgn_cvars, patches_int_cvars, patches_ext_cvars);
+    initBaseGrid(ctx, rt, static_cast<int>(       PVARS_ID::SIZE), rgn_pvars, patches_int_pvars, patches_ext_pvars);
+    initBaseGrid(ctx, rt, static_cast<int>(       BVARS_ID::SIZE), rgn_bvars, patches_int_bvars, patches_ext_bvars);
+    initBaseGrid(ctx, rt, static_cast<int>(       COORD_ID::SIZE), rgn_coord, patches_int_coord, patches_ext_coord);
     printf("Done!\n");
 
     printf("\n\nSet initial conditions ... ");
@@ -250,6 +292,8 @@ void top_level_task(const Task* task, const std::vector<PhysicalRegion>& rgns, C
         allocator.allocate_field(sizeof(Real), static_cast<int>(COPY_ID::FID_CP));
     }
     LogicalRegion cp_lr = rt->create_logical_region(ctx, rgn_coord.get_index_space(), cp_fs);
+
+
 
     char hdf5_file_name[256];
     char hdf5_dataset_name[256];

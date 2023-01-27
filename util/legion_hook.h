@@ -32,6 +32,8 @@ typedef Legion::FieldID             FieldID;
 typedef Legion::TaskArgument        TaskArguent;
 typedef Legion::FieldAllocator      FieldAllocator;
 
+typedef Legion::Transform<2,2,Legion::coord_t>  Transform2D;
+
 typedef Legion::PointInRectIterator<1> PointInBox1D;
 typedef Legion::PointInRectIterator<2> PointInBox2D;
 typedef Legion::PointInRectIterator<3> PointInBox3D;
