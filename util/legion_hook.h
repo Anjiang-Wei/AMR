@@ -38,6 +38,10 @@ typedef Legion::PointInRectIterator<1> PointInBox1D;
 typedef Legion::PointInRectIterator<2> PointInBox2D;
 typedef Legion::PointInRectIterator<3> PointInBox3D;
 
+typedef Legion::IndexLauncher IndexLauncher;
+typedef Legion::TaskArgument  TaskArgument;
+typedef Legion::ArgumentMap   ArgumentMap;
+
 template<legion_privilege_mode_t privil, typename dtype, int dim> using FieldAccessor = Legion::FieldAccessor<privil, dtype, dim>;
 
 #endif

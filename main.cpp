@@ -1,11 +1,15 @@
 #include <stdio.h>
 #include "util.h"
-#include <hdf5.h>
 #include "numerics.h"
 
-constexpr unsigned long PATCH_SIZE    = 8;
-constexpr unsigned long NUM_PATCHES_X = 8;
-constexpr unsigned long NUM_PATCHES_Y = 8;
+#define USE_HDF5 0
+#if(USE_HDF5)
+#include <hdf5.h>
+#endif
+
+constexpr unsigned long PATCH_SIZE    = 4;
+constexpr unsigned long NUM_PATCHES_X = 3;
+constexpr unsigned long NUM_PATCHES_Y = 3;
 constexpr unsigned long STENCIL_WIDTH = 5;
 constexpr Real          t_final       = 10.0;
 constexpr Real          viscosity     = 10.0;
@@ -46,11 +50,11 @@ enum class COPY_ID {
 };
 
 
-enum TASK_ID {
-    TOP_LEVEL, ELEM_OP
+enum class TASK_ID {
+    TOP_LEVEL, SET_INIT_COND, ELEM_OP
 };
 
-
+#if(USE_HDF5)
 bool generate_hdf_file(const char *file_name, const char *dataset_name, int num_elements)
 {
     // strip off any filename prefix starting with a colon
@@ -120,11 +124,14 @@ bool generate_hdf_file(const char *file_name, const char *dataset_name, int num_
     H5Fclose(file_id);
     return true;
 }
+#endif
 
 
 void initBaseGrid(Context& ctx, Runtime* rt, const int fs_size, LogicalRegion& region_of_fields, LogicalPartition& patches_interior, LogicalPartition& patches_extended)
 {
-    Box2D grid_bounds = Box2D(Point2D(0,0), Point2D(NUM_PATCHES_X*PATCH_SIZE-1, NUM_PATCHES_Y*PATCH_SIZE-1));
+    constexpr unsigned long NUM_GHOSTS2 = STENCIL_WIDTH - 1;
+    constexpr unsigned long NUM_GHOSTS  = STENCIL_WIDTH / 2;
+    Box2D grid_bounds = Box2D(Point2D(0,0), Point2D(NUM_PATCHES_X*PATCH_SIZE+NUM_GHOSTS2-1, NUM_PATCHES_Y*PATCH_SIZE+NUM_GHOSTS2-1));
     IndexSpace grid_isp = rt->create_index_space(ctx, grid_bounds);
     FieldSpace fs = rt->create_field_space(ctx);
     FieldAllocator field_allocator = rt->create_field_allocator(ctx, fs);
@@ -134,31 +141,66 @@ void initBaseGrid(Context& ctx, Runtime* rt, const int fs_size, LogicalRegion& r
     }
     region_of_fields = rt->create_logical_region(ctx, grid_isp, fs);
 
-    Box2D color_bounds = Box2D(Point2D(0,0), Point2D(NUM_PATCHES_X, NUM_PATCHES_Y));
+    Box2D color_bounds = Box2D(Point2D(0,0), Point2D(NUM_PATCHES_X+1, NUM_PATCHES_Y+1));
     IndexSpace color_isp = rt->create_index_space(ctx, color_bounds);
     std::map<DomainPoint, Domain> domain_map;
-    for (auto ip = 0; ip < NUM_PATCHES_X; ip++) {
-        const unsigned long i_lo = ip * PATCH_SIZE;
-        const unsigned long i_hi = i_lo + PATCH_SIZE - 1;
-        for (auto jp = 0; jp < NUM_PATCHES_Y; jp++) {
-            const unsigned long j_lo = jp * PATCH_SIZE;
+    // Ghost boundaries in x-direction
+    for (auto ip = 0; ip < NUM_PATCHES_X+2; ip+=NUM_PATCHES_X+1) {
+        const unsigned long i_lo = ip>0 ? NUM_GHOSTS + NUM_PATCHES_X * PATCH_SIZE : 0;
+        const unsigned long i_hi = i_lo + NUM_GHOSTS - 1;
+        for (auto jp = 1; jp < NUM_PATCHES_Y+1; jp++) {
+            const unsigned long j_lo = NUM_GHOSTS + (jp-1) * PATCH_SIZE;
             const unsigned long j_hi = j_lo + PATCH_SIZE - 1;
             Point2D lower_bounds(i_lo, j_lo);
             Point2D upper_bounds(i_hi, j_hi);
             DomainPoint p_coord(Point2D(ip, jp));
             Domain patch(Box2D(lower_bounds, upper_bounds));
             domain_map.insert({p_coord, patch});
+            //printf("[DEBUG] x-boundary partition (%2u, %2u): (%2lu, %2lu) -- (%2lu, %2lu)\n", ip, jp, i_lo, j_lo, i_hi, j_hi);
+        }
+    }
+    // Ghost boundaries in y-direction
+    for (auto ip = 1; ip < NUM_PATCHES_X+1; ip++) {
+        const unsigned long i_lo = NUM_GHOSTS + (ip-1) * PATCH_SIZE;
+        const unsigned long i_hi = i_lo + PATCH_SIZE - 1;
+        for (auto jp = 0; jp < NUM_PATCHES_Y+2; jp+=NUM_PATCHES_Y+1) {
+            const unsigned long j_lo = jp>0 ? NUM_GHOSTS + NUM_PATCHES_Y * PATCH_SIZE : 0;
+            const unsigned long j_hi = j_lo + NUM_GHOSTS - 1;
+            Point2D lower_bounds(i_lo, j_lo);
+            Point2D upper_bounds(i_hi, j_hi);
+            DomainPoint p_coord(Point2D(ip, jp));
+            Domain patch(Box2D(lower_bounds, upper_bounds));
+            domain_map.insert({p_coord, patch});
+            //printf("[DEBUG] y-boundary partition (%2u, %2u): (%2lu, %2lu) -- (%2lu, %2lu)\n", ip, jp, i_lo, j_lo, i_hi, j_hi);
+        }
+    }
+
+    // Interior patches
+    for (auto ip = 1; ip < NUM_PATCHES_X+1; ip++) {
+        const unsigned long i_lo = NUM_GHOSTS + (ip-1) * PATCH_SIZE;
+        const unsigned long i_hi = i_lo + PATCH_SIZE - 1;
+        for (auto jp = 1; jp < NUM_PATCHES_Y+1; jp++) {
+            const unsigned long j_lo = NUM_GHOSTS + (jp-1) * PATCH_SIZE;
+            const unsigned long j_hi = j_lo + PATCH_SIZE - 1;
+            Point2D lower_bounds(i_lo, j_lo);
+            Point2D upper_bounds(i_hi, j_hi);
+            DomainPoint p_coord(Point2D(ip, jp));
+            Domain patch(Box2D(lower_bounds, upper_bounds));
+            domain_map.insert({p_coord, patch});
+            //printf("[DEBUG] interior partition (%2u, %2u): (%2lu, %2lu) -- (%2lu, %2lu)\n", ip, jp, i_lo, j_lo, i_hi, j_hi);
         }
     }
     IndexPartition idx_partition = rt->create_partition_by_domain(ctx, grid_isp, domain_map, color_isp);
     patches_interior = rt->get_logical_partition(ctx, region_of_fields, idx_partition);
 
+    // Transform interior patches
+    Box2D color_bounds_interior = Box2D(Point2D(1,1), Point2D(NUM_PATCHES_X, NUM_PATCHES_Y));
+    IndexSpace color_isp_interior = rt->create_index_space(ctx, color_bounds_interior);
     Transform2D transform;
     transform[0][0] = PATCH_SIZE;
     transform[1][1] = PATCH_SIZE;
-    constexpr unsigned long NUM_GHOSTS = STENCIL_WIDTH / 2;
-    Box2D extent(Point2D(-NUM_GHOSTS, -NUM_GHOSTS), Point2D(PATCH_SIZE-1+NUM_GHOSTS, PATCH_SIZE-1+NUM_GHOSTS));
-    IndexPartition idx_part_ext = rt->create_partition_by_restriction(ctx, grid_isp, color_isp, transform, extent);
+    Box2D extent(Point2D(-PATCH_SIZE, -PATCH_SIZE), Point2D(NUM_GHOSTS2-1, NUM_GHOSTS2-1));
+    IndexPartition idx_part_ext = rt->create_partition_by_restriction(ctx, grid_isp, color_isp_interior, transform, extent);
     patches_extended = rt->get_logical_partition(ctx, region_of_fields, idx_part_ext);
 }
 
@@ -198,6 +240,7 @@ void stencil_operation_demo_task(const Task* task, const std::vector<PhysicalReg
 
 void set_initial_condition_task(const Task* task, const std::vector<PhysicalRegion>& rgns, Context ctx, Runtime* rt) {
 
+    printf("Launching \"set_initial_condition_task\":\n");
     const PhysicalRegion& rgn_cvars = rgns[0];
     const PhysicalRegion& rgn_pvars = rgns[1];
     Box2D isp_domain = rt->get_index_space_domain(ctx, task->regions[0].region.get_index_space());
@@ -270,6 +313,8 @@ void top_level_task(const Task* task, const std::vector<PhysicalRegion>& rgns, C
     LogicalPartition patches_ext_cvars;
     LogicalPartition patches_ext_pvars;
     LogicalPartition patches_ext_bvars;
+    Box2D color_bounds_interior = Box2D(Point2D(1,1), Point2D(NUM_PATCHES_X, NUM_PATCHES_Y));
+    IndexSpace color_isp_interior = rt->create_index_space(ctx, color_bounds_interior);
 
     printf("Call \"initBaseGrid\" from \"top_level_task\" ... ");
     initBaseGrid(ctx, rt, static_cast<int>(STAGE3_CVARS_ID::SIZE), rgn_cvars, patches_int_cvars, patches_ext_cvars);
@@ -279,12 +324,25 @@ void top_level_task(const Task* task, const std::vector<PhysicalRegion>& rgns, C
     printf("Done!\n");
 
     printf("\n\nSet initial conditions ... ");
-    // TODO: index launch "set_initial_condition_task"
+    IndexLauncher index_launcher(static_cast<int>(TASK_ID::SET_INIT_COND), color_isp_interior, TaskArgument(NULL, 0), ArgumentMap());
+    index_launcher.add_region_requirement(RegionRequirement(patches_int_cvars, 0, WRITE_DISCARD, EXCLUSIVE, rgn_cvars));
+    index_launcher.add_region_requirement(RegionRequirement(patches_int_pvars, 0,    READ_WRITE, EXCLUSIVE, rgn_pvars));
+    index_launcher.region_requirements[0].add_field(static_cast<int>(STAGE3_CVARS_ID::MASS_0));
+    index_launcher.region_requirements[0].add_field(static_cast<int>(STAGE3_CVARS_ID::MMTX_0));
+    index_launcher.region_requirements[0].add_field(static_cast<int>(STAGE3_CVARS_ID::MMTY_0));
+    index_launcher.region_requirements[0].add_field(static_cast<int>(STAGE3_CVARS_ID::ENRG_0));
+    index_launcher.region_requirements[1].add_field(static_cast<int>(PVARS_ID::DENSITY));
+    index_launcher.region_requirements[1].add_field(static_cast<int>(PVARS_ID::VEL_X)  );
+    index_launcher.region_requirements[1].add_field(static_cast<int>(PVARS_ID::VEL_Y)  );
+    index_launcher.region_requirements[1].add_field(static_cast<int>(PVARS_ID::TEMP)   );
+    rt->execute_index_space(ctx, index_launcher);
+    
     printf("Done!\n");
 
     printf("\n\nStart time integration:\n");
     printf("Simulation done!!!\n");
 
+#if (USE_HDF5)
     // Prepare for copy
     FieldSpace cp_fs = rt->create_field_space(ctx);
     {
@@ -324,6 +382,7 @@ void top_level_task(const Task* task, const std::vector<PhysicalRegion>& rgns, C
 
     Future f = rt->detach_external_resource(ctx, cp_pr);
     f.get_void_result(true /*silence warnings*/);
+#endif
 }
 
 
@@ -333,12 +392,17 @@ int main(int argc, char* argv[]) {
 
     printf("Hello World from the real main test!\n");
 
-    Legion::Runtime::set_top_level_task_id(TASK_ID::TOP_LEVEL);
+    Legion::Runtime::set_top_level_task_id(static_cast<int>(TASK_ID::TOP_LEVEL));
 
-    {
-        Legion::TaskVariantRegistrar registrar(TASK_ID::TOP_LEVEL, "top_level_task");
+    { // Register top_level_task
+        Legion::TaskVariantRegistrar registrar(static_cast<int>(TASK_ID::TOP_LEVEL), "top_level_task");
         registrar.add_constraint(Legion::ProcessorConstraint(Legion::Processor::LOC_PROC));
         Legion::Runtime::preregister_task_variant<top_level_task>(registrar, "top_level_task");
+    }
+    { // Register set_initial_considition_task
+        Legion::TaskVariantRegistrar registrar(static_cast<int>(TASK_ID::SET_INIT_COND), "set_initial_condition_task");
+        registrar.add_constraint(Legion::ProcessorConstraint(Legion::Processor::LOC_PROC));
+        Legion::Runtime::preregister_task_variant<set_initial_condition_task>(registrar, "set_initial_condition_task");
     }
 
     return Legion::Runtime::start(argc, argv);
