@@ -4,6 +4,8 @@
 
 #include "legion_hook.h"
 #include "util.h"
+#include "physical_models.h"
+#include "num_kernels.h"
 #include "tasks.h"
 
 #endif

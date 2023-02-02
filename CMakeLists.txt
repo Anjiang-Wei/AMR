@@ -9,6 +9,8 @@ add_compile_options(${CXX_BUILD_WARNING_FLAGS})
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+set(CXX_WARNING_FLAGS -Wall -Wextra -Wpedantic)
+
 find_package(HDF5 REQUIRED)
 if (${HDF5_FOUND})
     include_directories(SYSTEM ${HDF5_INCLUDE_DIRS})
