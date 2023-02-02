@@ -5,6 +5,7 @@
 #include "legion.h"
 #include <map>
 
+
 typedef Legion::Rect <1, long long int> Box1D;
 typedef Legion::Rect <2, long long int> Box2D;
 typedef Legion::Rect <3, long long int> Box3D;

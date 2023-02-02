@@ -1,6 +1,5 @@
 #include <stdio.h>
-#include "util.h"
-#include "numerics.h"
+#include "demolibs.h"
 
 #define USE_HDF5 0
 #if(USE_HDF5)
@@ -18,10 +17,6 @@ constexpr Real          Rg            = 1.0;
 constexpr Real          gamma         = 1.4;
 
 // Fieldspace of primitive variables
-enum class PVARS_ID {
-    VEL_X, VEL_Y, DENSITY, TEMP,
-    SIZE
-};
 
 
 // Fieldspace of conservative variables
@@ -40,19 +35,11 @@ enum class BVARS_ID {
 };
 
 
-// Mesh
-enum class COORD_ID {
-    X, Y, Z, SIZE
-};
 
 enum class COPY_ID {
     FID_CP,
 };
 
-
-enum class TASK_ID {
-    TOP_LEVEL, SET_INIT_COND, ELEM_OP
-};
 
 #if(USE_HDF5)
 bool generate_hdf_file(const char *file_name, const char *dataset_name, int num_elements)
