@@ -29,7 +29,10 @@ struct  COORD_ID {
 
 struct TASK_ID {
     enum {
-        TOP_LEVEL, MESH_GEN, SET_INIT_COND,
+        TOP_LEVEL,
+        MESH_GEN,
+        SET_INIT_COND,
+        CALC_RHS,
         SIZE
     };
 };
@@ -41,8 +44,9 @@ void taskMeshGen                       (const Task*, const std::vector<PhysicalR
 void taskSetInitialCondition           (const Task*, const std::vector<PhysicalRegion>&, Context, Runtime*);
 void taskConvertPrimitiveToConservative(const Task*, const std::vector<PhysicalRegion>&, Context, Runtime*);
 void taskConvertConservativeToPrimitive(const Task*, const std::vector<PhysicalRegion>&, Context, Runtime*);
+void taskCalcRHS                       (const Task*, const std::vector<PhysicalRegion>&, Context, Runtime*);
 
-struct ArgsMeshGen{
+struct ArgsMeshGen {
     Real Lx;
     Real Ly;
     Real offset_x = 0.0;
@@ -52,7 +56,15 @@ struct ArgsMeshGen{
     Point2D origin;
 };
 
-struct ArgsConvertPrimitiveToConservative{ int stage_id; PerfectGasModel eos; };
-struct ArgsConvertConservativeToPrimitive{ int stage_id; PerfectGasModel eos; };
+struct ArgsConvertPrimitiveToConservative{ int stage_id; EquationOfStateType eos; };
+struct ArgsConvertConservativeToPrimitive{ int stage_id; EquationOfStateType eos; };
+
+struct ArgsCalcRHS {
+    Real dx;
+    Real dy;
+    int stage_id_now;
+    int stage_id_ddt;
+    EquationOfStateType eos;
+};
 
 #endif

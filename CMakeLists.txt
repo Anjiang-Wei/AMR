@@ -6,7 +6,7 @@ cmake_policy(SET CMP0074 NEW)
 add_compile_options(${CXX_BUILD_WARNING_FLAGS})
 
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(CXX_WARNING_FLAGS -Wall -Wextra -Wpedantic)

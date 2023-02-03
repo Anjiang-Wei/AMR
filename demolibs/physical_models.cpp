@@ -8,11 +8,22 @@
  * Constructor
  */
 PerfectGasModel::PerfectGasModel(Real _Rg, Real _gamma) :
-    Rg    (_Rg),
-    gamma (_gamma),
-    cv    (_Rg / (_gamma - 1.0)),
-    cv_inv(1.0 / cv)
+    Rg     (_Rg                 ),
+    gamma  (_gamma              ),
+    cv     (_Rg / (_gamma - 1.0)),
+    cv_inv (1.0 / cv            )
 { /*** empty body ***/ };
+
+
+/*
+ * Copy constructor
+ */
+PerfectGasModel::PerfectGasModel(const PerfectGasModel& other) :
+    Rg     (other.Rg   ),
+    gamma  (other.gamma),
+    cv     (other.cv   ),
+    cv_inv (other.inv  )
+{}
 
 
 /*!
@@ -36,6 +47,14 @@ virtual Real PerfectGasModel::calcTemperatureEVT(const Real e, const Real rho) c
 /*!
  * Calculate pressure using PVT relation
  */
-virtual Real PerfectGas::Model::calcPressurePVT(const Real rho, const Real T) const {
+virtual Real PerfectGasModel::calcPressurePVT(const Real rho, const Real T) const {
     return rho * this->Rg * T;
+}
+
+
+/*!
+ * Calculate density using PVT relation
+ */
+virtual Real PerfectGasModel::calcDensityPVT(const Real T, const Real p) const {
+    return p / (this->Rg * T);
 }
