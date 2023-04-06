@@ -45,6 +45,8 @@ void taskSetInitialCondition           (const Task*, const std::vector<PhysicalR
 void taskConvertPrimitiveToConservative(const Task*, const std::vector<PhysicalRegion>&, Context, Runtime*);
 void taskConvertConservativeToPrimitive(const Task*, const std::vector<PhysicalRegion>&, Context, Runtime*);
 void taskCalcRHS                       (const Task*, const std::vector<PhysicalRegion>&, Context, Runtime*);
+void taskSSPRK3                        (const Task*, const std::vector<PhysicalRegion>&, Context, Runtime*);
+
 
 struct ArgsMeshGen {
     Real Lx;
@@ -56,15 +58,20 @@ struct ArgsMeshGen {
     Point2D origin;
 };
 
-struct ArgsConvertPrimitiveToConservative{ int stage_id; EquationOfStateType eos; };
-struct ArgsConvertConservativeToPrimitive{ int stage_id; EquationOfStateType eos; };
+struct ArgsConvertPrimitiveToConservative{ int stage_id; Real R_gas; Real gamma; };
+struct ArgsConvertConservativeToPrimitive{ int stage_id; Real R_gas; Real gamma; };
 
 struct ArgsCalcRHS {
     Real dx;
     Real dy;
     int stage_id_now;
     int stage_id_ddt;
-    EquationOfStateType eos;
+    Real R_gas;
+    Real gamma;
+    Real mu_ref;
+    Real  T_ref;
+    Real visc_exp;
+    Real Pr;
 };
 
 #endif

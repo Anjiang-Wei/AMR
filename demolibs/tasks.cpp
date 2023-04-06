@@ -26,7 +26,7 @@ void taskTopLevel(const Task* task, const std::vector<PhysicalRegion>& rgns, Con
         1.0, // LY
     };
 
-    constexpr unsigned int NUM_REGISTERS = 3;
+    constexpr unsigned int NUM_REGISTERS = 3; // number of registers for timestepping
 
     RegionOfFields coords; // coordinates
     RegionOfFields c_vars; // conservative variables
@@ -137,7 +137,8 @@ void taskConvertPrimitiveToConservative(const Task* task, const std::vector<Phys
 
     auto args = reinterpret_cast<ArgsConvertPrimitiveToConservative*>(task->args);
     const int STAGE_ID = args->stage_id;
-    auto& eos = args->eos;
+    const Real R_gas    = args->R_gas;
+    const Real gamm_inv = 1.0 / (args->gamma - 1.0);
 
     const PhysicalRegion& rgn_pvars = rgns[0];
     const PhysicalRegion& rgn_cvars = rgns[1];
@@ -155,10 +156,11 @@ void taskConvertPrimitiveToConservative(const Task* task, const std::vector<Phys
     Box2D isp_domain = rt->get_index_space_domain(ctx, task->regions[1].region.get_index_space());
     for (PointInBox2D pir(isp_domain); pir(); pir++) {
         Point2D ij = *pir;
+        const Real e_int = R_gas * gamm_inv * p_T[ij];
         c_rho [ij] = p_rho[ij];
         c_rhou[ij] = p_rho[ij] * p_u[ij];
         c_rhov[ij] = p_rho[ij] * p_v[ij];
-        c_Etot[ij] = p_rho[ij] * (eos.calcInternalEnergyEVT(p_rho[ij], p_T[ij]) + 0.5 * (p_u[ij]*p_u[ij] + p_v[ij]*p_v[ij]));
+        c_Etot[ij] = p_rho[ij] * (e_int + 0.5 * (p_u[ij]*p_u[ij] + p_v[ij]*p_v[ij]));
     }
 
 }
@@ -185,7 +187,9 @@ void taskConvertConservativeToPrimitive(const Task* task, const std::vector<Phys
 
     auto args = reinterpret_cast<ArgsConvertConservativeToPrimitive*>(task->args);
     const int STAGE_ID = args->stage_id;
-    auto& eos = args->eos;
+    const Real R_gas  = args->R_gas;
+    const Real gamm   = args->gamma - 1.0;
+    const Real Rg_inv = 1.0 / R_gas;
 
     const PhysicalRegion& rgn_cvars = rgns[0];
     const PhysicalRegion& rgn_pvars = rgns[1];
@@ -210,7 +214,7 @@ void taskConvertConservativeToPrimitive(const Task* task, const std::vector<Phys
         p_rho [ij] = c_rho[ij];
         p_u   [ij] = u;
         p_v   [ij] = v;
-        p_T   [ij] = eos.calcTemperatureEVT(e_int, c_rho[ij]);
+        p_T   [ij] = gamm * e_int * Rg_inv;
     }
 }
 
@@ -238,7 +242,13 @@ void taskCalcRHS(const Task* task, const std::vector<PhysicalRegion>& rgns, Cont
     auto args = reinterpret_cast<ArgsCalcRHS*>(task->args);
     const int STAGE_ID_NOW = args->stage_id_now;
     const int STAGE_ID_DDT = args->stage_id_ddt;
-    auto               eos = args->eos;
+    const int STENCIL_SIZE = args->stencil_size;
+    const Real          Rg = args->R_gas;
+    const Real         gam = args->gamma;
+    const Real      mu_ref = args->mu_ref;
+    const Real       T_ref = args->T_ref;
+    const Real    visc_exp = args->visc_exp;
+    const Real          Pr = args->Pr;
     const Real      dx_inv = 1.0 / args->dx;
     const Real      dy_inv = 1.0 / args->dy;
 
@@ -247,80 +257,124 @@ void taskCalcRHS(const Task* task, const std::vector<PhysicalRegion>& rgns, Cont
 
 
     // TODO: Inline launch taskConvertConservativeToPrimitive
-    ArgsConvertPrimitiveToConservative args_convert_primitive_to_conservative {STAGE_ID_NOW, eos};
-    (void) args_convert_primitive_to_conservative; // TODO: delete this line
+    ArgsConvertConservativeToPrimitive args_convert_conservative_to_primitive {STAGE_ID_NOW, eos};
+    (void) args_convert_conservative_to_primitive; // TODO: delete this line
 
     //const FieldAccessor<READ_ONLY, Real, 2> c_mass(rgn_cvars, STAGE_ID_NOW * CVARS_ID::SIZE + CVARS_ID::MASS);
     //const FieldAccessor<READ_ONLY, Real, 2> c_mmtx(rgn_cvars, STAGE_ID_NOW * CVARS_ID::SIZE + CVARS_ID::MMTX);
     //const FieldAccessor<READ_ONLY, Real, 2> c_mmty(rgn_cvars, STAGE_ID_NOW * CVARS_ID::SIZE + CVARS_ID::MMTY);
     //const FieldAccessor<READ_ONLY, Real, 2> c_enrg(rgn_cvars, STAGE_ID_NOW * CVARS_ID::SIZE + CVARS_ID::ENRG);
 
-    const FieldAccessor<READ_ONLY, Real, 2> rho(rgn_pvars, PVARS_ID::DENSITY);
-    const FieldAccessor<READ_ONLY, Real, 2> u  (rgn_pvars, PVARS_ID::VEL_X  );
-    const FieldAccessor<READ_ONLY, Real, 2> v  (rgn_pvars, PVARS_ID::VEL_Y  );
-    const FieldAccessor<READ_ONLY, Real, 2> T  (rgn_pvars, PVARS_ID::TEMP   );
+    const FieldAccessor<READ_ONLY, Real, 2> rho_coll(rgn_pvars, PVARS_ID::DENSITY);
+    const FieldAccessor<READ_ONLY, Real, 2>   u_coll(rgn_pvars, PVARS_ID::VEL_X  );
+    const FieldAccessor<READ_ONLY, Real, 2>   v_coll(rgn_pvars, PVARS_ID::VEL_Y  );
+    const FieldAccessor<READ_ONLY, Real, 2>   T_coll(rgn_pvars, PVARS_ID::TEMP   );
 
     const FieldAccessor<WRITE_DISCARD, Real, 2> ddt_mass(rgn_cvars, STAGE_ID_DDT * CVARS_ID::SIZE + CVARS_ID::MASS);
     const FieldAccessor<WRITE_DISCARD, Real, 2> ddt_mmtx(rgn_cvars, STAGE_ID_DDT * CVARS_ID::SIZE + CVARS_ID::MMTX);
     const FieldAccessor<WRITE_DISCARD, Real, 2> ddt_mmty(rgn_cvars, STAGE_ID_DDT * CVARS_ID::SIZE + CVARS_ID::MMTY);
     const FieldAccessor<WRITE_DISCARD, Real, 2> ddt_enrg(rgn_cvars, STAGE_ID_DDT * CVARS_ID::SIZE + CVARS_ID::ENRG);
 
-
+    const int EDGE_STENCIL_SIZE = STENCIL_SIZE - 1;
     Box2D isp_domain = rt->get_index_space_domain(ctx, task->regions[0].region.get_index_space());
     for (PointInBox2D pir(isp_domain); pir(); pir++) {
         Point2D ij   = *pir;
-        Point2D ije4 = ij + Point2D(4,0);
-        Point2D ije3 = ij + Point2D(3,0);
-        Point2D ije2 = ij + Point2D(2,0);
-        Point2D ije1 = ij + Point2D(1,0);
-        Point2D ijw1 = ij - Point2D(1,0);
-        Point2D ijw2 = ij - Point2D(2,0);
-        Point2D ijw3 = ij - Point2D(3,0);
-        Point2D ijw4 = ij - Point2D(4,0);
-        Point2D ijn4 = ij + Point2D(0,4);
-        Point2D ijn3 = ij + Point2D(0,3);
-        Point2D ijn2 = ij + Point2D(0,2);
-        Point2D ijn1 = ij + Point2D(0,1);
-        Point2D ijs1 = ij - Point2D(0,1);
-        Point2D ijs2 = ij - Point2D(0,2);
-        Point2D ijs3 = ij - Point2D(0,3);
-        Point2D ijs4 = ij - Point2D(0,4);
+
+        Real flx_mass[EDGE_STENCIL_SIZE], flx_mmtx[EDGE_STENCIL_SIZE], flx_mmty[EDGE_STENCIL_SIZE], flx_enrg[EDGE_STENCIL_SIZE];
+        Real rho, u, v, w, T, p, h, dudx, dudy, dvdx, dvdy, gradT;
+        Real du_coll[EDGE_STENCIL_SIZE], dv_coll[EDGE_STENCIL_SIZE];
 
         /*** Step 1 assemble fluxes in x-staggered ***/
-        {
-            Real flx_mass_w2, flx_mass_w1, flx_mass_e1, flx_mass_e2;
-            Real flx_mmtx_w2, flx_mmtx_w1, flx_mmtx_e1, flx_mmtx_e2;
-            Real flx_mmty_w2, flx_mmty_w1, flx_mmty_e1, flx_mmty_e2;
-            Real flx_enrg_w2, flx_enrg_w1, flx_enrg_e1, flx_enrg_e2;
+        for (int idx_edge = 0; idx_edge < EDGE_STENCIL_SIZE; idx_edge++) {
+            Point2D ijw2 = ij + Point(idx_edge-3, 0); 
+            Point2D ijw1 = ij + Point(idx_edge-2, 0); 
+            Point2D ije1 = ij + Point(idx_edge-1, 0); 
+            Point2D ije2 = ij; 
 
-            Real rho_stag, u_stag, v_stag, T_stag, p_stag;
-            u_stag = ei04Stag(u[ij  ], u[ije1], u[ije2], u[ije3]);
-            v_stag = ei04Stag(v[ij  ], v[ije1], v[ije2], v[ije3]);
-            T_stag = ei04Stag(T[ij  ], T[ije1], T[ije2], T[ije3]);
+            // Load variables at edges
+            u = ei04Stag(u_coll[ijw2], u_coll[ijw1], u_coll[ije1], u_coll[ije2]);
+            v = ei04Stag(v_coll[ijw2], v_coll[ijw1], v_coll[ije1], v_coll[ije2]);
+            T = ei04Stag(T_coll[ijw2], T_coll[ijw1], T_coll[ije1], T_coll[ije2]);
+            p = ei04Stag(p_coll[ijw2], p_coll[ijw1], p_coll[ije1], p_coll[ije2]);
+            rho = p / (Rg * T); 
+            h = Rg * gam / (gam - 1.0) * T + 0.5 * (u*u + v*v);
+            dudx  = ed04Stag(u_coll[ijw2], u_coll[ijw1], u_coll[ije1], u_coll[ije2], dx_inv);
+            dvdx  = ed04Stag(v_coll[ijw2], v_coll[ijw1], v_coll[ije1], v_coll[ije2], dx_inv);
+            gradT = ed04Stag(T_coll[ijw2], T_coll[ijw1], T_coll[ije1], T_coll[ije2], dx_inv);
+            for (int idx_coll = 0; idx_coll < EDGE_STENCIL_SIZE; idx_coll++) {
+                Point2D ij0  = ijw2 + Point(idx_coll, 0);
+                Point2D ijn2 = ij0  + Point(0,  2);
+                Point2D ijn1 = ij0  + Point(0,  1);
+                Point2D ijs1 = ij0  + Point(0, -1);
+                Point2D ijs2 = ij0  + Point(0, -2);
+                du_coll[idx_coll] = ed04Coll(u_coll[ijs2], u_coll[ijs1], u_coll[ij0], u_coll[ijn1], u_coll[ijn2], dy_inv);
+                dv_coll[idx_coll] = ed04Coll(v_coll[ijs2], v_coll[ijs1], v_coll[ij0], v_coll[ijn1], v_coll[ijn2], dy_inv);
+            }
+            dudy = ei04Stag(du_coll[0], du_coll[1], du_coll[2], du_coll[3]);
+            dvdy = ei04Stag(dv_coll[0], dv_coll[1], dv_coll[2], dv_coll[3]);
 
-            flx_mass_e2 = -rho_stag * u_stag;
+            const Real mu  = mu_ref * pow(T/T_ref, visc_exp);
+            const Real kap = Rg * gam / (gam - 1.0) * mu / Pr;
+            const Real Skk = dudx + dvdy;
+            const Real str11 = 2.0 * mu * dudx - (2./3.) * mu * Skk;
+            const Real str21 = mu * (dudy + dvdx);
 
-            Real rho_e2 = ei04Stag(rho[ij  ], rho[ije1], rho[ije2], rho[ije3]);
-            Real rho_e1 = ei04Stag(rho[ijw1], rho[ij  ], rho[ije1], rho[ije2]);
-            Real rho_w1 = ei04Stag(rho[ijw2], rho[ijw1], rho[ij  ], rho[ije1]);
-            Real rho_w2 = ei04Stag(rho[ijw3], rho[ijw2], rho[ijw1], rho[ij  ]);
-
-            Real u_e2 = ei04Stag(u[ij  ], u[ije1], u[ije2], u[ije3]);
-            Real u_e1 = ei04Stag(u[ijw1], u[ij  ], u[ije1], u[ije2]);
-            Real u_w1 = ei04Stag(u[ijw2], u[ijw1], u[ij  ], u[ije1]);
-            Real u_w2 = ei04Stag(u[ijw3], u[ijw2], u[ijw1], u[ij  ]);
-
-            Real v_e2 = ei04Stag(v[ij  ], v[ije1], v[ije2], v[ije3]);
-            Real v_e1 = ei04Stag(v[ijw1], v[ij  ], v[ije1], v[ije2]);
-            Real v_w1 = ei04Stag(v[ijw2], v[ijw1], v[ij  ], v[ije1]);
-            Real v_w2 = ei04Stag(v[ijw3], v[ijw2], v[ijw1], v[ij  ]);
-
-            Real T_e2 = ei04Stag(T[ij  ], T[ije1], T[ije2], T[ije3]);
-            Real T_e1 = ei04Stag(T[ijw1], T[ij  ], T[ije1], T[ije2]);
-            Real T_w1 = ei04Stag(T[ijw2], T[ijw1], T[ij  ], T[ije1]);
-            Real T_w2 = ei04Stag(T[ijw3], T[ijw2], T[ijw1], T[ij  ]);
+            // Assemble fluxes
+            flx_mass[idx_edge] = -rho * u;
+            flx_mmtx[idx_edge] = -rho * u * u - p + str11;
+            flx_mmty[idx_edge] = -rho * v * u     + str21;
+            flx_enrg[idx_edge] = -rho * h * u + u * str11 + v * str21;
         }
+        ddt_mass[ij] = ed04Stag(flx_mass[0], flx_mass[1], flx_mass[2], flx_mass[3], dx_inv);
+        ddt_mmtx[ij] = ed04Stag(flx_mmtx[0], flx_mmtx[1], flx_mmtx[2], flx_mmtx[3], dx_inv);
+        ddt_mmty[ij] = ed04Stag(flx_mmty[0], flx_mmty[1], flx_mmty[2], flx_mmty[3], dx_inv);
+        ddt_enrg[ij] = ed04Stag(flx_enrg[0], flx_enrg[1], flx_enrg[2], flx_enrg[3], dx_inv);
 
+        /*** Step 2 assemble fluxes in y-staggered ***/
+        for (int idx_edge = 0; idx_edge < EDGE_STENCIL_SIZE; idx_edge++) {
+            Point2D ijs2 = ij + Point(0, idx_edge-3); 
+            Point2D ijs1 = ij + Point(0, idx_edge-2); 
+            Point2D ijn1 = ij + Point(0, idx_edge-1); 
+            Point2D ijn2 = ij; 
+
+            // Load variables at edges
+            u = ei04Stag(u_coll[ijs2], u_coll[ijs1], u_coll[ijn1], u_coll[ijn2]);
+            v = ei04Stag(v_coll[ijs2], v_coll[ijs1], v_coll[ijn1], v_coll[ijn2]);
+            T = ei04Stag(T_coll[ijs2], T_coll[ijs1], T_coll[ijn1], T_coll[ijn2]);
+            p = ei04Stag(p_coll[ijs2], p_coll[ijs1], p_coll[ijn1], p_coll[ijn2]);
+            rho = p / (Rg * T); 
+            h = Rg * gam / (gam - 1.0) * T + 0.5 * (u*u + v*v);
+            dudy  = ed04Stag(u_coll[ijs2], u_coll[ijs1], u_coll[ijn1], u_coll[ijn2], dy_inv);
+            dvdy  = ed04Stag(v_coll[ijs2], v_coll[ijs1], v_coll[ijn1], v_coll[ijn2], dy_inv);
+            gradT = ed04Stag(T_coll[ijs2], T_coll[ijs1], T_coll[ijn1], T_coll[ijn2], dy_inv);
+            for (int idx_coll = 0; idx_coll < EDGE_STENCIL_SIZE; idx_coll++) {
+                Point2D ij0  = ijs2 + Point(0, idx_coll);
+                Point2D ije2 = ij0  + Point( 2, 0);
+                Point2D ije1 = ij0  + Point( 1, 0);
+                Point2D ijw1 = ij0  + Point(-1, 0);
+                Point2D ijw2 = ij0  + Point(-2, 0);
+                du_coll[idx_coll] = ed04Coll(u_coll[ijw2], u_coll[ijw1], u_coll[ij0], u_coll[ije1], u_coll[ije2], dx_inv);
+                dv_coll[idx_coll] = ed04Coll(v_coll[ijw2], v_coll[ijw1], v_coll[ij0], v_coll[ije1], v_coll[ije2], dx_inv);
+            }
+            dudx = ei04Stag(du_coll[0], du_coll[1], du_coll[2], du_coll[3]);
+            dvdx = ei04Stag(dv_coll[0], dv_coll[1], dv_coll[2], dv_coll[3]);
+
+            const Real mu  = mu_ref * pow(T/T_ref, visc_exp);
+            const Real kap = Rg * gam / (gam - 1.0) * mu / Pr;
+            const Real Skk = dudx + dvdy;
+            const Real str12 = mu * (dudy + dvdx);
+            const Real str22 = 2.0 * mu * dvdy - (2./3.) * mu * Skk;
+
+            // Assemble fluxes
+            flx_mass[idx_edge] = -rho * v;
+            flx_mmtx[idx_edge] = -rho * u * v     + str12;
+            flx_mmty[idx_edge] = -rho * v * v -p  + str22;
+            flx_enrg[idx_edge] = -rho * h * v + u * str12 + v * str22;
+        }
+        ddt_mass[ij] += ed04Stag(flx_mass[0], flx_mass[1], flx_mass[2], flx_mass[3], dy_inv);
+        ddt_mmtx[ij] += ed04Stag(flx_mmtx[0], flx_mmtx[1], flx_mmtx[2], flx_mmtx[3], dy_inv);
+        ddt_mmty[ij] += ed04Stag(flx_mmty[0], flx_mmty[1], flx_mmty[2], flx_mmty[3], dy_inv);
+        ddt_enrg[ij] += ed04Stag(flx_enrg[0], flx_enrg[1], flx_enrg[2], flx_enrg[3], dy_inv);
     }
 }
 
