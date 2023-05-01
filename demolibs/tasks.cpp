@@ -1,5 +1,6 @@
 
 #include "tasks.h"
+#include <cmath>
 
 
 void registerAllTasks() {
@@ -26,16 +27,19 @@ void taskTopLevel(const Task* task, const std::vector<PhysicalRegion>& rgns, Con
         1.0, // LY
     };
 
-    constexpr unsigned int NUM_REGISTERS = 3; // number of registers for timestepping
 
     RegionOfFields coords; // coordinates
-    RegionOfFields c_vars; // conservative variables
+    RegionOfFields c0_vars; // conservative variables
+    RegionOfFields c1_vars; // conservative variables
+    RegionOfFields c2_vars; // conservative variables
     RegionOfFields p_vars; // primitive variables
 
     //IndexSpace color_isp_int = getColorIndexSpaceInt(ctx, rt, grid_config);
-    initializeBaseGrid2D(ctx, rt, grid_config, CVARS_ID::SIZE*NUM_REGISTERS, c_vars);
-    initializeBaseGrid2D(ctx, rt, grid_config, PVARS_ID::SIZE              , p_vars);
-    initializeBaseGrid2D(ctx, rt, grid_config, COORD_ID::SIZE              , coords);
+    initializeBaseGrid2D(ctx, rt, grid_config, CVARS_ID::SIZE, c0_vars);
+    initializeBaseGrid2D(ctx, rt, grid_config, CVARS_ID::SIZE, c1_vars);
+    initializeBaseGrid2D(ctx, rt, grid_config, CVARS_ID::SIZE, c2_vars);
+    initializeBaseGrid2D(ctx, rt, grid_config, PVARS_ID::SIZE, p_vars);
+    initializeBaseGrid2D(ctx, rt, grid_config, COORD_ID::SIZE, coords);
 }
 
 
@@ -241,8 +245,6 @@ void taskCalcRHS(const Task* task, const std::vector<PhysicalRegion>& rgns, Cont
 
     auto args = reinterpret_cast<ArgsCalcRHS*>(task->args);
     const int STAGE_ID_NOW = args->stage_id_now;
-    const int STAGE_ID_DDT = args->stage_id_ddt;
-    const int STENCIL_SIZE = args->stencil_size;
     const Real          Rg = args->R_gas;
     const Real         gam = args->gamma;
     const Real      mu_ref = args->mu_ref;
@@ -257,8 +259,8 @@ void taskCalcRHS(const Task* task, const std::vector<PhysicalRegion>& rgns, Cont
 
 
     // TODO: Inline launch taskConvertConservativeToPrimitive
-    ArgsConvertConservativeToPrimitive args_convert_conservative_to_primitive {STAGE_ID_NOW, eos};
-    (void) args_convert_conservative_to_primitive; // TODO: delete this line
+    //ArgsConvertConservativeToPrimitive args_convert_conservative_to_primitive {STAGE_ID_NOW, eos};
+    //(void) args_convert_conservative_to_primitive; // TODO: delete this line
 
     //const FieldAccessor<READ_ONLY, Real, 2> c_mass(rgn_cvars, STAGE_ID_NOW * CVARS_ID::SIZE + CVARS_ID::MASS);
     //const FieldAccessor<READ_ONLY, Real, 2> c_mmtx(rgn_cvars, STAGE_ID_NOW * CVARS_ID::SIZE + CVARS_ID::MMTX);
@@ -270,12 +272,12 @@ void taskCalcRHS(const Task* task, const std::vector<PhysicalRegion>& rgns, Cont
     const FieldAccessor<READ_ONLY, Real, 2>   v_coll(rgn_pvars, PVARS_ID::VEL_Y  );
     const FieldAccessor<READ_ONLY, Real, 2>   T_coll(rgn_pvars, PVARS_ID::TEMP   );
 
-    const FieldAccessor<WRITE_DISCARD, Real, 2> ddt_mass(rgn_cvars, STAGE_ID_DDT * CVARS_ID::SIZE + CVARS_ID::MASS);
-    const FieldAccessor<WRITE_DISCARD, Real, 2> ddt_mmtx(rgn_cvars, STAGE_ID_DDT * CVARS_ID::SIZE + CVARS_ID::MMTX);
-    const FieldAccessor<WRITE_DISCARD, Real, 2> ddt_mmty(rgn_cvars, STAGE_ID_DDT * CVARS_ID::SIZE + CVARS_ID::MMTY);
-    const FieldAccessor<WRITE_DISCARD, Real, 2> ddt_enrg(rgn_cvars, STAGE_ID_DDT * CVARS_ID::SIZE + CVARS_ID::ENRG);
+    const FieldAccessor<WRITE_DISCARD, Real, 2> ddt_mass(rgn_cvars, CVARS_ID::SIZE + CVARS_ID::MASS);
+    const FieldAccessor<WRITE_DISCARD, Real, 2> ddt_mmtx(rgn_cvars, CVARS_ID::SIZE + CVARS_ID::MMTX);
+    const FieldAccessor<WRITE_DISCARD, Real, 2> ddt_mmty(rgn_cvars, CVARS_ID::SIZE + CVARS_ID::MMTY);
+    const FieldAccessor<WRITE_DISCARD, Real, 2> ddt_enrg(rgn_cvars, CVARS_ID::SIZE + CVARS_ID::ENRG);
 
-    const int EDGE_STENCIL_SIZE = STENCIL_SIZE - 1;
+    constexpr int EDGE_STENCIL_SIZE = STENCIL_SIZE - 1;
     Box2D isp_domain = rt->get_index_space_domain(ctx, task->regions[0].region.get_index_space());
     for (PointInBox2D pir(isp_domain); pir(); pir++) {
         Point2D ij   = *pir;
@@ -286,29 +288,35 @@ void taskCalcRHS(const Task* task, const std::vector<PhysicalRegion>& rgns, Cont
 
         /*** Step 1 assemble fluxes in x-staggered ***/
         for (int idx_edge = 0; idx_edge < EDGE_STENCIL_SIZE; idx_edge++) {
-            Point2D ijw2 = ij + Point(idx_edge-3, 0); 
-            Point2D ijw1 = ij + Point(idx_edge-2, 0); 
-            Point2D ije1 = ij + Point(idx_edge-1, 0); 
+            Point2D ijw2 = ij + Point2D(idx_edge-3, 0); 
+            Point2D ijw1 = ij + Point2D(idx_edge-2, 0); 
+            Point2D ije1 = ij + Point2D(idx_edge-1, 0); 
             Point2D ije2 = ij; 
 
             // Load variables at edges
+            const Real p_coll_ijw2 = rho_coll[ijw2] * Rg * T_coll[ijw2];
+            const Real p_coll_ijw1 = rho_coll[ijw1] * Rg * T_coll[ijw1];
+            const Real p_coll_ije1 = rho_coll[ije1] * Rg * T_coll[ije1];
+            const Real p_coll_ije2 = rho_coll[ije2] * Rg * T_coll[ije2];
+
             u = ei04Stag(u_coll[ijw2], u_coll[ijw1], u_coll[ije1], u_coll[ije2]);
             v = ei04Stag(v_coll[ijw2], v_coll[ijw1], v_coll[ije1], v_coll[ije2]);
             T = ei04Stag(T_coll[ijw2], T_coll[ijw1], T_coll[ije1], T_coll[ije2]);
-            p = ei04Stag(p_coll[ijw2], p_coll[ijw1], p_coll[ije1], p_coll[ije2]);
+            p = ei04Stag(p_coll_ijw2 , p_coll_ijw1 , p_coll_ije1 , p_coll_ije2 );
+
             rho = p / (Rg * T); 
             h = Rg * gam / (gam - 1.0) * T + 0.5 * (u*u + v*v);
             dudx  = ed04Stag(u_coll[ijw2], u_coll[ijw1], u_coll[ije1], u_coll[ije2], dx_inv);
             dvdx  = ed04Stag(v_coll[ijw2], v_coll[ijw1], v_coll[ije1], v_coll[ije2], dx_inv);
             gradT = ed04Stag(T_coll[ijw2], T_coll[ijw1], T_coll[ije1], T_coll[ije2], dx_inv);
             for (int idx_coll = 0; idx_coll < EDGE_STENCIL_SIZE; idx_coll++) {
-                Point2D ij0  = ijw2 + Point(idx_coll, 0);
-                Point2D ijn2 = ij0  + Point(0,  2);
-                Point2D ijn1 = ij0  + Point(0,  1);
-                Point2D ijs1 = ij0  + Point(0, -1);
-                Point2D ijs2 = ij0  + Point(0, -2);
-                du_coll[idx_coll] = ed04Coll(u_coll[ijs2], u_coll[ijs1], u_coll[ij0], u_coll[ijn1], u_coll[ijn2], dy_inv);
-                dv_coll[idx_coll] = ed04Coll(v_coll[ijs2], v_coll[ijs1], v_coll[ij0], v_coll[ijn1], v_coll[ijn2], dy_inv);
+                Point2D ij0  = ijw2 + Point2D(idx_coll, 0);
+                Point2D ijn2 = ij0  + Point2D(0,  2);
+                Point2D ijn1 = ij0  + Point2D(0,  1);
+                Point2D ijs1 = ij0  + Point2D(0, -1);
+                Point2D ijs2 = ij0  + Point2D(0, -2);
+                du_coll[idx_coll] = ed04Coll(u_coll[ijs2], u_coll[ijs1], u_coll[ijn1], u_coll[ijn2], dy_inv);
+                dv_coll[idx_coll] = ed04Coll(v_coll[ijs2], v_coll[ijs1], v_coll[ijn1], v_coll[ijn2], dy_inv);
             }
             dudy = ei04Stag(du_coll[0], du_coll[1], du_coll[2], du_coll[3]);
             dvdy = ei04Stag(dv_coll[0], dv_coll[1], dv_coll[2], dv_coll[3]);
@@ -325,36 +333,41 @@ void taskCalcRHS(const Task* task, const std::vector<PhysicalRegion>& rgns, Cont
             flx_mmty[idx_edge] = -rho * v * u     + str21;
             flx_enrg[idx_edge] = -rho * h * u + u * str11 + v * str21;
         }
-        ddt_mass[ij] = ed04Stag(flx_mass[0], flx_mass[1], flx_mass[2], flx_mass[3], dx_inv);
-        ddt_mmtx[ij] = ed04Stag(flx_mmtx[0], flx_mmtx[1], flx_mmtx[2], flx_mmtx[3], dx_inv);
-        ddt_mmty[ij] = ed04Stag(flx_mmty[0], flx_mmty[1], flx_mmty[2], flx_mmty[3], dx_inv);
-        ddt_enrg[ij] = ed04Stag(flx_enrg[0], flx_enrg[1], flx_enrg[2], flx_enrg[3], dx_inv);
+        const Real ddt_mass_x = ed04Stag(flx_mass[0], flx_mass[1], flx_mass[2], flx_mass[3], dx_inv);
+        const Real ddt_mmtx_x = ed04Stag(flx_mmtx[0], flx_mmtx[1], flx_mmtx[2], flx_mmtx[3], dx_inv);
+        const Real ddt_mmty_x = ed04Stag(flx_mmty[0], flx_mmty[1], flx_mmty[2], flx_mmty[3], dx_inv);
+        const Real ddt_enrg_x = ed04Stag(flx_enrg[0], flx_enrg[1], flx_enrg[2], flx_enrg[3], dx_inv);
 
         /*** Step 2 assemble fluxes in y-staggered ***/
         for (int idx_edge = 0; idx_edge < EDGE_STENCIL_SIZE; idx_edge++) {
-            Point2D ijs2 = ij + Point(0, idx_edge-3); 
-            Point2D ijs1 = ij + Point(0, idx_edge-2); 
-            Point2D ijn1 = ij + Point(0, idx_edge-1); 
+            Point2D ijs2 = ij + Point2D(0, idx_edge-3); 
+            Point2D ijs1 = ij + Point2D(0, idx_edge-2); 
+            Point2D ijn1 = ij + Point2D(0, idx_edge-1); 
             Point2D ijn2 = ij; 
 
             // Load variables at edges
+            const Real p_coll_ijs2 = rho_coll[ijs2] * Rg * T_coll[ijs2];
+            const Real p_coll_ijs1 = rho_coll[ijs1] * Rg * T_coll[ijs1];
+            const Real p_coll_ijn1 = rho_coll[ijn1] * Rg * T_coll[ijn1];
+            const Real p_coll_ijn2 = rho_coll[ijn2] * Rg * T_coll[ijn2];
+
             u = ei04Stag(u_coll[ijs2], u_coll[ijs1], u_coll[ijn1], u_coll[ijn2]);
             v = ei04Stag(v_coll[ijs2], v_coll[ijs1], v_coll[ijn1], v_coll[ijn2]);
             T = ei04Stag(T_coll[ijs2], T_coll[ijs1], T_coll[ijn1], T_coll[ijn2]);
-            p = ei04Stag(p_coll[ijs2], p_coll[ijs1], p_coll[ijn1], p_coll[ijn2]);
+            p = ei04Stag(p_coll_ijs2 , p_coll_ijs1 , p_coll_ijn1 , p_coll_ijn2 );
             rho = p / (Rg * T); 
             h = Rg * gam / (gam - 1.0) * T + 0.5 * (u*u + v*v);
             dudy  = ed04Stag(u_coll[ijs2], u_coll[ijs1], u_coll[ijn1], u_coll[ijn2], dy_inv);
             dvdy  = ed04Stag(v_coll[ijs2], v_coll[ijs1], v_coll[ijn1], v_coll[ijn2], dy_inv);
             gradT = ed04Stag(T_coll[ijs2], T_coll[ijs1], T_coll[ijn1], T_coll[ijn2], dy_inv);
             for (int idx_coll = 0; idx_coll < EDGE_STENCIL_SIZE; idx_coll++) {
-                Point2D ij0  = ijs2 + Point(0, idx_coll);
-                Point2D ije2 = ij0  + Point( 2, 0);
-                Point2D ije1 = ij0  + Point( 1, 0);
-                Point2D ijw1 = ij0  + Point(-1, 0);
-                Point2D ijw2 = ij0  + Point(-2, 0);
-                du_coll[idx_coll] = ed04Coll(u_coll[ijw2], u_coll[ijw1], u_coll[ij0], u_coll[ije1], u_coll[ije2], dx_inv);
-                dv_coll[idx_coll] = ed04Coll(v_coll[ijw2], v_coll[ijw1], v_coll[ij0], v_coll[ije1], v_coll[ije2], dx_inv);
+                Point2D ij0  = ijs2 + Point2D(0, idx_coll);
+                Point2D ije2 = ij0  + Point2D( 2, 0);
+                Point2D ije1 = ij0  + Point2D( 1, 0);
+                Point2D ijw1 = ij0  + Point2D(-1, 0);
+                Point2D ijw2 = ij0  + Point2D(-2, 0);
+                du_coll[idx_coll] = ed04Coll(u_coll[ijw2], u_coll[ijw1], u_coll[ije1], u_coll[ije2], dx_inv);
+                dv_coll[idx_coll] = ed04Coll(v_coll[ijw2], v_coll[ijw1], v_coll[ije1], v_coll[ije2], dx_inv);
             }
             dudx = ei04Stag(du_coll[0], du_coll[1], du_coll[2], du_coll[3]);
             dvdx = ei04Stag(dv_coll[0], dv_coll[1], dv_coll[2], dv_coll[3]);
@@ -371,10 +384,10 @@ void taskCalcRHS(const Task* task, const std::vector<PhysicalRegion>& rgns, Cont
             flx_mmty[idx_edge] = -rho * v * v -p  + str22;
             flx_enrg[idx_edge] = -rho * h * v + u * str12 + v * str22;
         }
-        ddt_mass[ij] += ed04Stag(flx_mass[0], flx_mass[1], flx_mass[2], flx_mass[3], dy_inv);
-        ddt_mmtx[ij] += ed04Stag(flx_mmtx[0], flx_mmtx[1], flx_mmtx[2], flx_mmtx[3], dy_inv);
-        ddt_mmty[ij] += ed04Stag(flx_mmty[0], flx_mmty[1], flx_mmty[2], flx_mmty[3], dy_inv);
-        ddt_enrg[ij] += ed04Stag(flx_enrg[0], flx_enrg[1], flx_enrg[2], flx_enrg[3], dy_inv);
+        ddt_mass[ij] = ddt_mass_x + ed04Stag(flx_mass[0], flx_mass[1], flx_mass[2], flx_mass[3], dy_inv);
+        ddt_mmtx[ij] = ddt_mmtx_x + ed04Stag(flx_mmtx[0], flx_mmtx[1], flx_mmtx[2], flx_mmtx[3], dy_inv);
+        ddt_mmty[ij] = ddt_mmty_x + ed04Stag(flx_mmty[0], flx_mmty[1], flx_mmty[2], flx_mmty[3], dy_inv);
+        ddt_enrg[ij] = ddt_enrg_x + ed04Stag(flx_enrg[0], flx_enrg[1], flx_enrg[2], flx_enrg[3], dy_inv);
     }
 }
 
@@ -382,3 +395,25 @@ void taskCalcRHS(const Task* task, const std::vector<PhysicalRegion>& rgns, Cont
 
 
 
+/*!
+ * Calculate the right-hand sides of evolution equations
+ *
+ * Fields:
+ * [rw][0] CVARS::DENSITY
+ * [rw][0] CVARS::VEL_X
+ * [rw][0] CVARS::VEL_Y
+ * [rw][0] CVARS::TEMP
+ * [rw][1] PVARS::DENSITY
+ * [rw][1] PVARS::VEL_X
+ * [rw][1] PVARS::VEL_Y
+ * [rw][1] PVARS::TEMP
+ *
+ * Args: ArgsCalcRHS
+ */
+void taskSSPRK3(const Task* task, const std::vector<PhysicalRegion>& rgns, Context ctx, Runtime* rt) {
+    const PhysicalRegion& rgn_cvars_stage0 = rgns[0];
+    const PhysicalRegion& rgn_cvars_stage1 = rgns[1];
+    const PhysicalRegion& rgn_cvars_stage2 = rgns[2];
+    const PhysicalRegion& rgn_pvars        = rgns[3];
+
+}

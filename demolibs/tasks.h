@@ -8,6 +8,9 @@
 #include "physical_models.h"
 #include <vector>
 
+constexpr int STENCIL_SIZE = 5;
+constexpr unsigned int NUM_REGISTERS = 3; // number of registers for timestepping
+
 struct CVARS_ID {
     enum {
         MASS, MMTX, MMTY, ENRG,
@@ -66,6 +69,7 @@ struct ArgsCalcRHS {
     Real dy;
     int stage_id_now;
     int stage_id_ddt;
+    int stencil_size;
     Real R_gas;
     Real gamma;
     Real mu_ref;
