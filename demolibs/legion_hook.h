@@ -30,7 +30,7 @@ typedef Legion::CopyLauncher        CopyLauncher;
 typedef Legion::AttachLauncher      AttachLauncher;
 typedef Legion::FieldSpace          FieldSpace;
 typedef Legion::FieldID             FieldID;
-typedef Legion::TaskArgument        TaskArguent;
+typedef Legion::TaskArgument        TaskArgument;
 typedef Legion::FieldAllocator      FieldAllocator;
 
 typedef Legion::Transform<2,2,Legion::coord_t>  Transform2D;

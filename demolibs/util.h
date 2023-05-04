@@ -6,6 +6,7 @@
 
 typedef double Real;
 typedef unsigned long long uint_t;
+typedef long long int int_t;
 
 struct BaseGridConfig {
     const uint_t PATCH_SIZE;
@@ -20,8 +21,14 @@ struct RegionOfFields {
     LogicalRegion    region;
     LogicalPartition patches_int;
     LogicalPartition patches_ext;
-    LogicalPartition patches_ghost_x;
-    LogicalPartition patches_ghost_y;
+    LogicalPartition patches_ghost_x_lo;
+    LogicalPartition patches_ghost_y_lo;
+    LogicalPartition patches_ghost_mirror_x_lo;
+    LogicalPartition patches_ghost_mirror_y_lo;
+    LogicalPartition patches_ghost_x_hi;
+    LogicalPartition patches_ghost_y_hi;
+    LogicalPartition patches_ghost_mirror_x_hi;
+    LogicalPartition patches_ghost_mirror_y_hi;
 };
 
 IndexSpace getColorIndexSpaceInt(Context&, Runtime*, const BaseGridConfig&);
