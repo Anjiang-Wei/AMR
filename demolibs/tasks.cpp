@@ -28,18 +28,19 @@ void taskTopLevel(const Task* task, const std::vector<PhysicalRegion>& rgns, Con
     };
 
 
-    RegionOfFields coords; // coordinates
+    RegionOfFields coords;  // coordinates
     RegionOfFields c0_vars; // conservative variables
     RegionOfFields c1_vars; // conservative variables
     RegionOfFields c2_vars; // conservative variables
-    RegionOfFields p_vars; // primitive variables
+    RegionOfFields p_vars;  // primitive variables
 
-    //IndexSpace color_isp_int = getColorIndexSpaceInt(ctx, rt, grid_config);
-    initializeBaseGrid2D(ctx, rt, grid_config, CVARS_ID::SIZE, c0_vars);
-    initializeBaseGrid2D(ctx, rt, grid_config, CVARS_ID::SIZE, c1_vars);
-    initializeBaseGrid2D(ctx, rt, grid_config, CVARS_ID::SIZE, c2_vars);
-    initializeBaseGrid2D(ctx, rt, grid_config, PVARS_ID::SIZE, p_vars);
-    initializeBaseGrid2D(ctx, rt, grid_config, COORD_ID::SIZE, coords);
+    Box2D color_bounds_int = Box2D(Point2D(0,0), Point2D(grid_config.NUM_PATCHES_X-1, grid_config.NUM_PATCHES_Y-1));
+    IndexSpace color_isp_int = rt->create_index_space(ctx, color_bounds_int);
+    initializeBaseGrid2DNew(ctx, rt, grid_config, CVARS_ID::SIZE, c0_vars);
+    initializeBaseGrid2DNew(ctx, rt, grid_config, CVARS_ID::SIZE, c1_vars);
+    initializeBaseGrid2DNew(ctx, rt, grid_config, CVARS_ID::SIZE, c2_vars);
+    initializeBaseGrid2DNew(ctx, rt, grid_config, PVARS_ID::SIZE, p_vars);
+    initializeBaseGrid2DNew(ctx, rt, grid_config, COORD_ID::SIZE, coords);
 }
 
 
@@ -140,7 +141,6 @@ void taskConvertPrimitiveToConservative(const Task* task, const std::vector<Phys
     (void) ctx;
 
     auto args = reinterpret_cast<ArgsConvertPrimitiveToConservative*>(task->args);
-    const int STAGE_ID = args->stage_id;
     const Real R_gas    = args->R_gas;
     const Real gamm_inv = 1.0 / (args->gamma - 1.0);
 
@@ -152,10 +152,10 @@ void taskConvertPrimitiveToConservative(const Task* task, const std::vector<Phys
     const FieldAccessor<READ_ONLY, Real, 2> p_v  (rgn_pvars, PVARS_ID::VEL_Y  );
     const FieldAccessor<READ_ONLY, Real, 2> p_T  (rgn_pvars, PVARS_ID::TEMP   );
 
-    const FieldAccessor<WRITE_DISCARD, Real, 2> c_rho (rgn_cvars, STAGE_ID * CVARS_ID::SIZE + CVARS_ID::MASS);
-    const FieldAccessor<WRITE_DISCARD, Real, 2> c_rhou(rgn_cvars, STAGE_ID * CVARS_ID::SIZE + CVARS_ID::MMTX);
-    const FieldAccessor<WRITE_DISCARD, Real, 2> c_rhov(rgn_cvars, STAGE_ID * CVARS_ID::SIZE + CVARS_ID::MMTY);
-    const FieldAccessor<WRITE_DISCARD, Real, 2> c_Etot(rgn_cvars, STAGE_ID * CVARS_ID::SIZE + CVARS_ID::ENRG);
+    const FieldAccessor<WRITE_DISCARD, Real, 2> c_rho (rgn_cvars, CVARS_ID::MASS);
+    const FieldAccessor<WRITE_DISCARD, Real, 2> c_rhou(rgn_cvars, CVARS_ID::MMTX);
+    const FieldAccessor<WRITE_DISCARD, Real, 2> c_rhov(rgn_cvars, CVARS_ID::MMTY);
+    const FieldAccessor<WRITE_DISCARD, Real, 2> c_Etot(rgn_cvars, CVARS_ID::ENRG);
 
     Box2D isp_domain = rt->get_index_space_domain(ctx, task->regions[1].region.get_index_space());
     for (PointInBox2D pir(isp_domain); pir(); pir++) {
@@ -190,7 +190,6 @@ void taskConvertConservativeToPrimitive(const Task* task, const std::vector<Phys
     (void) ctx;
 
     auto args = reinterpret_cast<ArgsConvertConservativeToPrimitive*>(task->args);
-    const int STAGE_ID = args->stage_id;
     const Real R_gas  = args->R_gas;
     const Real gamm   = args->gamma - 1.0;
     const Real Rg_inv = 1.0 / R_gas;
@@ -198,10 +197,10 @@ void taskConvertConservativeToPrimitive(const Task* task, const std::vector<Phys
     const PhysicalRegion& rgn_cvars = rgns[0];
     const PhysicalRegion& rgn_pvars = rgns[1];
 
-    const FieldAccessor<READ_ONLY, Real, 2> c_rho (rgn_cvars, STAGE_ID * CVARS_ID::SIZE + CVARS_ID::MASS);
-    const FieldAccessor<READ_ONLY, Real, 2> c_rhou(rgn_cvars, STAGE_ID * CVARS_ID::SIZE + CVARS_ID::MMTX);
-    const FieldAccessor<READ_ONLY, Real, 2> c_rhov(rgn_cvars, STAGE_ID * CVARS_ID::SIZE + CVARS_ID::MMTY);
-    const FieldAccessor<READ_ONLY, Real, 2> c_Etot(rgn_cvars, STAGE_ID * CVARS_ID::SIZE + CVARS_ID::ENRG);
+    const FieldAccessor<READ_ONLY, Real, 2> c_rho (rgn_cvars, CVARS_ID::MASS);
+    const FieldAccessor<READ_ONLY, Real, 2> c_rhou(rgn_cvars, CVARS_ID::MMTX);
+    const FieldAccessor<READ_ONLY, Real, 2> c_rhov(rgn_cvars, CVARS_ID::MMTY);
+    const FieldAccessor<READ_ONLY, Real, 2> c_Etot(rgn_cvars, CVARS_ID::ENRG);
 
     const FieldAccessor<WRITE_DISCARD, Real, 2> p_rho(rgn_pvars, PVARS_ID::DENSITY);
     const FieldAccessor<WRITE_DISCARD, Real, 2> p_u  (rgn_pvars, PVARS_ID::VEL_X  );
@@ -229,14 +228,19 @@ void taskConvertConservativeToPrimitive(const Task* task, const std::vector<Phys
  * Calculate the right-hand sides of evolution equations
  *
  * Fields:
- * [rw][0] CVARS::DENSITY
- * [rw][0] CVARS::VEL_X
- * [rw][0] CVARS::VEL_Y
- * [rw][0] CVARS::TEMP
- * [rw][1] PVARS::DENSITY
- * [rw][1] PVARS::VEL_X
- * [rw][1] PVARS::VEL_Y
- * [rw][1] PVARS::TEMP
+ * [ro][0] PVARS::DENSITY
+ * [ro][0] PVARS::VEL_X
+ * [ro][0] PVARS::VEL_Y
+ * [ro][0] PVARS::TEMP
+ * [ro][1] CVARS::DENSITY
+ * [ro][1] CVARS::VEL_X
+ * [ro][1] CVARS::VEL_Y
+ * [ro][1] CVARS::TEMP
+ * [wo][2] CVARS::DENSITY
+ * [wo][2] CVARS::VEL_X
+ * [wo][2] CVARS::VEL_Y
+ * [wo][2] CVARS::TEMP
+ * Note: region[1] and region[2] are actually disjoint!
  *
  * Args: ArgsCalcRHS
  */
@@ -253,29 +257,26 @@ void taskCalcRHS(const Task* task, const std::vector<PhysicalRegion>& rgns, Cont
     const Real          Pr = args->Pr;
     const Real      dx_inv = 1.0 / args->dx;
     const Real      dy_inv = 1.0 / args->dy;
+    const Real          dt = 1.0 / args->dt;
 
-    const PhysicalRegion& rgn_cvars = rgns[0];
-    const PhysicalRegion& rgn_pvars = rgns[1];
-
-
-    // TODO: Inline launch taskConvertConservativeToPrimitive
-    //ArgsConvertConservativeToPrimitive args_convert_conservative_to_primitive {STAGE_ID_NOW, eos};
-    //(void) args_convert_conservative_to_primitive; // TODO: delete this line
-
-    //const FieldAccessor<READ_ONLY, Real, 2> c_mass(rgn_cvars, STAGE_ID_NOW * CVARS_ID::SIZE + CVARS_ID::MASS);
-    //const FieldAccessor<READ_ONLY, Real, 2> c_mmtx(rgn_cvars, STAGE_ID_NOW * CVARS_ID::SIZE + CVARS_ID::MMTX);
-    //const FieldAccessor<READ_ONLY, Real, 2> c_mmty(rgn_cvars, STAGE_ID_NOW * CVARS_ID::SIZE + CVARS_ID::MMTY);
-    //const FieldAccessor<READ_ONLY, Real, 2> c_enrg(rgn_cvars, STAGE_ID_NOW * CVARS_ID::SIZE + CVARS_ID::ENRG);
+    const PhysicalRegion& rgn_pvars   = rgns[0];
+    const PhysicalRegion& rgn_cvars_r = rgns[1];
+    const PhysicalRegion& rgn_cvars_w = rgns[2];
 
     const FieldAccessor<READ_ONLY, Real, 2> rho_coll(rgn_pvars, PVARS_ID::DENSITY);
     const FieldAccessor<READ_ONLY, Real, 2>   u_coll(rgn_pvars, PVARS_ID::VEL_X  );
     const FieldAccessor<READ_ONLY, Real, 2>   v_coll(rgn_pvars, PVARS_ID::VEL_Y  );
     const FieldAccessor<READ_ONLY, Real, 2>   T_coll(rgn_pvars, PVARS_ID::TEMP   );
 
-    const FieldAccessor<WRITE_DISCARD, Real, 2> ddt_mass(rgn_cvars, CVARS_ID::SIZE + CVARS_ID::MASS);
-    const FieldAccessor<WRITE_DISCARD, Real, 2> ddt_mmtx(rgn_cvars, CVARS_ID::SIZE + CVARS_ID::MMTX);
-    const FieldAccessor<WRITE_DISCARD, Real, 2> ddt_mmty(rgn_cvars, CVARS_ID::SIZE + CVARS_ID::MMTY);
-    const FieldAccessor<WRITE_DISCARD, Real, 2> ddt_enrg(rgn_cvars, CVARS_ID::SIZE + CVARS_ID::ENRG);
+    const FieldAccessor<READ_ONLY, Real, 2> cons_mass(rgn_cvars_r, CVARS_ID::MASS);
+    const FieldAccessor<READ_ONLY, Real, 2> cons_mmtx(rgn_cvars_r, CVARS_ID::MMTX);
+    const FieldAccessor<READ_ONLY, Real, 2> cons_mmty(rgn_cvars_r, CVARS_ID::MMTY);
+    const FieldAccessor<READ_ONLY, Real, 2> cons_enrg(rgn_cvars_r, CVARS_ID::ENRG);
+
+    const FieldAccessor<WRITE_DISCARD, Real, 2> ddt_mass(rgn_cvars_w, CVARS_ID::MASS);
+    const FieldAccessor<WRITE_DISCARD, Real, 2> ddt_mmtx(rgn_cvars_w, CVARS_ID::MMTX);
+    const FieldAccessor<WRITE_DISCARD, Real, 2> ddt_mmty(rgn_cvars_w, CVARS_ID::MMTY);
+    const FieldAccessor<WRITE_DISCARD, Real, 2> ddt_enrg(rgn_cvars_w, CVARS_ID::ENRG);
 
     constexpr int EDGE_STENCIL_SIZE = STENCIL_SIZE - 1;
     Box2D isp_domain = rt->get_index_space_domain(ctx, task->regions[0].region.get_index_space());
@@ -384,10 +385,15 @@ void taskCalcRHS(const Task* task, const std::vector<PhysicalRegion>& rgns, Cont
             flx_mmty[idx_edge] = -rho * v * v -p  + str22;
             flx_enrg[idx_edge] = -rho * h * v + u * str12 + v * str22;
         }
-        ddt_mass[ij] = ddt_mass_x + ed04Stag(flx_mass[0], flx_mass[1], flx_mass[2], flx_mass[3], dy_inv);
-        ddt_mmtx[ij] = ddt_mmtx_x + ed04Stag(flx_mmtx[0], flx_mmtx[1], flx_mmtx[2], flx_mmtx[3], dy_inv);
-        ddt_mmty[ij] = ddt_mmty_x + ed04Stag(flx_mmty[0], flx_mmty[1], flx_mmty[2], flx_mmty[3], dy_inv);
-        ddt_enrg[ij] = ddt_enrg_x + ed04Stag(flx_enrg[0], flx_enrg[1], flx_enrg[2], flx_enrg[3], dy_inv);
+        const Real ddt_mass_y = ed04Stag(flx_mass[0], flx_mass[1], flx_mass[2], flx_mass[3], dy_inv);
+        const Real ddt_mmtx_y = ed04Stag(flx_mmtx[0], flx_mmtx[1], flx_mmtx[2], flx_mmtx[3], dy_inv);
+        const Real ddt_mmty_y = ed04Stag(flx_mmty[0], flx_mmty[1], flx_mmty[2], flx_mmty[3], dy_inv);
+        const Real ddt_enrg_y = ed04Stag(flx_enrg[0], flx_enrg[1], flx_enrg[2], flx_enrg[3], dy_inv);
+
+        ddt_mass[ij] = cons_mass[ij] + dt * (ddt_mass_x + ddt_mass_y);
+        ddt_mmtx[ij] = cons_mmtx[ij] + dt * (ddt_mmtx_x + ddt_mmtx_y);
+        ddt_mmty[ij] = cons_mmty[ij] + dt * (ddt_mmty_x + ddt_mmty_y);
+        ddt_enrg[ij] = cons_enrg[ij] + dt * (ddt_enrg_x + ddt_enrg_y);
     }
 }
 
@@ -399,21 +405,326 @@ void taskCalcRHS(const Task* task, const std::vector<PhysicalRegion>& rgns, Cont
  * Calculate the right-hand sides of evolution equations
  *
  * Fields:
- * [rw][0] CVARS::DENSITY
- * [rw][0] CVARS::VEL_X
- * [rw][0] CVARS::VEL_Y
- * [rw][0] CVARS::TEMP
- * [rw][1] PVARS::DENSITY
- * [rw][1] PVARS::VEL_X
- * [rw][1] PVARS::VEL_Y
- * [rw][1] PVARS::TEMP
+ * [ro][0] CVARS::DENSITY
+ * [ro][0] CVARS::VEL_X
+ * [ro][0] CVARS::VEL_Y
+ * [ro][0] CVARS::TEMP
+ * [rw][1] CVARS::DENSITY
+ * [rw][1] CVARS::VEL_X
+ * [rw][1] CVARS::VEL_Y
+ * [rw][1] CVARS::TEMP
+ * Note region[0] and region[1] are actually disjoint!
  *
  * Args: ArgsCalcRHS
  */
-void taskSSPRK3(const Task* task, const std::vector<PhysicalRegion>& rgns, Context ctx, Runtime* rt) {
-    const PhysicalRegion& rgn_cvars_stage0 = rgns[0];
-    const PhysicalRegion& rgn_cvars_stage1 = rgns[1];
-    const PhysicalRegion& rgn_cvars_stage2 = rgns[2];
-    const PhysicalRegion& rgn_pvars        = rgns[3];
+void taskSSPRK3LinearCombination1(const Task* task, const std::vector<PhysicalRegion>& rgns, Context ctx, Runtime* rt) {
+    const PhysicalRegion& rgn_cvars_r = rgns[0];
+    const PhysicalRegion& rgn_cvars_w = rgns[1];
+
+    const FieldAccessor<READ_ONLY, Real, 2> mass_0(rgn_cvars_r, CVARS_ID::MASS);
+    const FieldAccessor<READ_ONLY, Real, 2> mmtx_0(rgn_cvars_r, CVARS_ID::MMTX);
+    const FieldAccessor<READ_ONLY, Real, 2> mmty_0(rgn_cvars_r, CVARS_ID::MMTY);
+    const FieldAccessor<READ_ONLY, Real, 2> enrg_0(rgn_cvars_r, CVARS_ID::ENRG);
+
+    const FieldAccessor<READ_WRITE, Real, 2> mass_1(rgn_cvars_w, CVARS_ID::MASS);
+    const FieldAccessor<READ_WRITE, Real, 2> mmtx_1(rgn_cvars_w, CVARS_ID::MMTX);
+    const FieldAccessor<READ_WRITE, Real, 2> mmty_1(rgn_cvars_w, CVARS_ID::MMTY);
+    const FieldAccessor<READ_WRITE, Real, 2> enrg_1(rgn_cvars_w, CVARS_ID::ENRG);
+
+    Box2D isp_domain = rt->get_index_space_domain(ctx, task->regions[0].region.get_index_space());
+    for (PointInBox2D pir(isp_domain); pir(); pir++) {
+        Point2D ij = *pir;
+        mass_1[ij] = mass_0[ij] * 0.75 + mass_1[ij] * 0.25;
+        mmtx_1[ij] = mmtx_0[ij] * 0.75 + mmtx_1[ij] * 0.25;
+        mass_1[ij] = mmty_0[ij] * 0.75 + mmty_1[ij] * 0.25;
+        enrg_1[ij] = enrg_0[ij] * 0.75 + enrg_1[ij] * 0.25;
+    }
+}
+
+
+
+/*!
+ * Calculate the right-hand sides of evolution equations
+ *
+ * Fields:
+ * [ro][0] CVARS::DENSITY
+ * [ro][0] CVARS::VEL_X
+ * [ro][0] CVARS::VEL_Y
+ * [ro][0] CVARS::TEMP
+ * [rw][1] CVARS::DENSITY
+ * [rw][1] CVARS::VEL_X
+ * [rw][1] CVARS::VEL_Y
+ * [rw][1] CVARS::TEMP
+ * Note region[0] and region[1] are actually disjoint!
+ *
+ * Args: ArgsCalcRHS
+ */
+void taskSSPRK3LinearCombination2(const Task* task, const std::vector<PhysicalRegion>& rgns, Context ctx, Runtime* rt) {
+    const PhysicalRegion& rgn_cvars_r = rgns[0];
+    const PhysicalRegion& rgn_cvars_w = rgns[1];
+
+    const FieldAccessor<READ_ONLY, Real, 2> mass_0(rgn_cvars_r, CVARS_ID::MASS);
+    const FieldAccessor<READ_ONLY, Real, 2> mmtx_0(rgn_cvars_r, CVARS_ID::MMTX);
+    const FieldAccessor<READ_ONLY, Real, 2> mmty_0(rgn_cvars_r, CVARS_ID::MMTY);
+    const FieldAccessor<READ_ONLY, Real, 2> enrg_0(rgn_cvars_r, CVARS_ID::ENRG);
+
+    const FieldAccessor<READ_WRITE, Real, 2> mass_1(rgn_cvars_w, CVARS_ID::MASS);
+    const FieldAccessor<READ_WRITE, Real, 2> mmtx_1(rgn_cvars_w, CVARS_ID::MMTX);
+    const FieldAccessor<READ_WRITE, Real, 2> mmty_1(rgn_cvars_w, CVARS_ID::MMTY);
+    const FieldAccessor<READ_WRITE, Real, 2> enrg_1(rgn_cvars_w, CVARS_ID::ENRG);
+
+    Box2D isp_domain = rt->get_index_space_domain(ctx, task->regions[0].region.get_index_space());
+    for (PointInBox2D pir(isp_domain); pir(); pir++) {
+        Point2D ij = *pir;
+        mass_1[ij] = mass_0[ij] * (1.0/3.0) + mass_1[ij] * (2.0/3.0);
+        mmtx_1[ij] = mmtx_0[ij] * (1.0/3.0) + mmtx_1[ij] * (2.0/3.0);
+        mass_1[ij] = mmty_0[ij] * (1.0/3.0) + mmty_1[ij] * (2.0/3.0);
+        enrg_1[ij] = enrg_0[ij] * (1.0/3.0) + enrg_1[ij] * (2.0/3.0);
+    }
+}
+
+
+/*
+ * Function of launchers to conduct SSPRK3
+ * Integrate resluts from t to t+dt
+ * Task involved:
+ *   taskConvertConservativeToPrimitive
+ *   taskCalcRHS
+ *   taskSSPRK3LinearCombination1
+ *   taskSSPRK3LinearCombination2
+ */
+void launchSSPRK3(IndexSpace& color_isp_int, IndexSpace& color_isp_ghost_x, IndexSpace& color_isp_ghost_y,
+        RegionOfFields& c0_vars, RegionOfFields& c1_vars, RegionOfFields& c2_vars, RegionOfFields& p_vars,
+        ArgsSolve& args, Context ctx, Runtime* rt)
+{
+     
+    /***************
+      RegionOfFields is defined in util.h
+        struct RegionOfFields {
+            LogicalRegion    region;
+            LogicalPartition patches_int;
+            LogicalPartition patches_ext;
+            LogicalPartition patches_ghost_x;
+            LogicalPartition patches_ghost_y;
+        };
+    *****************/
+    ArgsCalcRHS args_calcRHS;
+    args_calcRHS.dt    = args.dt;
+    args_calcRHS.dx    = args.dx;
+    args_calcRHS.dy    = args.dy;
+    args_calcRHS.R_gas = args.R_gas;
+    args_calcRHS.gamma = args.gamma;
+
+    ArgsConvertConservativeToPrimitive args_c2p;
+    args_c2p.R_gas = args.R_gas;
+    args_c2p.gamma = args.gamma;
+
+    const std::vector<unsigned int> field_id_c_vars {0, 1, 2, 3};
+    const std::vector<unsigned int> field_id_p_vars {0, 1, 2, 3};
+
+    { // Launch taskConvertConservativeToPrimitive
+        IndexLauncher launcher (
+                TASK_ID::CVARS_TO_PVARS,
+                color_isp_int,
+                TaskArgument(&args_c2p, sizeof(ArgsConvertConservativeToPrimitive)),
+                ArgumentMap()
+        );
+        launcher.add_region_requirement(RegionRequirement(c0_vars.patches_int, 0, READ_ONLY,     EXCLUSIVE, c0_vars.region));
+        launcher.add_region_requirement(RegionRequirement( p_vars.patches_int, 0, WRITE_DISCARD, EXCLUSIVE,  p_vars.region));
+        launcher.region_requirements[0].add_fields(field_id_c_vars);
+        launcher.region_requirements[1].add_fields(field_id_p_vars);
+        rt->execute_index_space(ctx, launcher);
+    }
+
+    {// Fill up ghost points for periodic domain in p_vars
+        IndexCopyLauncher launcher_x(color_isp_ghost_x);
+        launcher_x.add_copy_requirements(
+                RegionRequirement(p_vars.patches_ghost_mirror_x_hi, 0, READ_ONLY,     EXCLUSIVE, p_vars.region),
+                RegionRequirement(p_vars.patches_ghost_x_lo,        0, WRITE_DISCARD, EXCLUSIVE, p_vars.region)
+        );
+        launcher_x.add_copy_requirements(
+                RegionRequirement(p_vars.patches_ghost_mirror_x_lo, 0, READ_ONLY,     EXCLUSIVE, p_vars.region),
+                RegionRequirement(p_vars.patches_ghost_x_hi,        0, WRITE_DISCARD, EXCLUSIVE, p_vars.region)
+        );
+        launcher_x.src_requirements[0].add_fields(field_id_p_vars);
+        launcher_x.dst_requirements[0].add_fields(field_id_p_vars);
+        launcher_x.src_requirements[1].add_fields(field_id_p_vars);
+        launcher_x.dst_requirements[1].add_fields(field_id_p_vars);
+
+        IndexCopyLauncher launcher_y(color_isp_ghost_y);
+        launcher_y.add_copy_requirements(
+                RegionRequirement(p_vars.patches_ghost_mirror_y_hi, 0, READ_ONLY,     EXCLUSIVE, p_vars.region),
+                RegionRequirement(p_vars.patches_ghost_y_lo,        0, WRITE_DISCARD, EXCLUSIVE, p_vars.region)
+        );
+        launcher_y.add_copy_requirements(
+                RegionRequirement(p_vars.patches_ghost_mirror_y_lo, 0, READ_ONLY,     EXCLUSIVE, p_vars.region),
+                RegionRequirement(p_vars.patches_ghost_y_hi,        0, WRITE_DISCARD, EXCLUSIVE, p_vars.region)
+        );
+        launcher_y.src_requirements[0].add_fields(field_id_p_vars);
+        launcher_y.dst_requirements[0].add_fields(field_id_p_vars);
+        launcher_y.src_requirements[1].add_fields(field_id_p_vars);
+        launcher_y.dst_requirements[1].add_fields(field_id_p_vars);
+    }
+
+    { // Launch calcRHS and write solutions to c1_vars
+        IndexLauncher launcher (
+                TASK_ID::CALC_RHS,
+                color_isp_int,
+                TaskArgument(&args_calcRHS, sizeof(ArgsCalcRHS)),
+                ArgumentMap()
+        );
+        launcher.add_region_requirement(RegionRequirement( p_vars.patches_ext, 0, READ_ONLY,     EXCLUSIVE,  p_vars.region));
+        launcher.add_region_requirement(RegionRequirement(c1_vars.patches_int, 0, WRITE_DISCARD, EXCLUSIVE, c1_vars.region));
+        launcher.region_requirements[0].add_fields(field_id_c_vars);
+        launcher.region_requirements[1].add_fields(field_id_p_vars);
+        rt->execute_index_space(ctx, launcher);
+    }
+
+    { // Launch taskConvertConservativeToPrimitive
+        IndexLauncher launcher (
+                TASK_ID::CVARS_TO_PVARS,
+                color_isp_int,
+                TaskArgument(&args_c2p, sizeof(ArgsConvertConservativeToPrimitive)),
+                ArgumentMap()
+        );
+        launcher.add_region_requirement(RegionRequirement(c1_vars.patches_int, 0, READ_ONLY,     EXCLUSIVE, c1_vars.region));
+        launcher.add_region_requirement(RegionRequirement( p_vars.patches_int, 0, WRITE_DISCARD, EXCLUSIVE,  p_vars.region));
+        launcher.region_requirements[0].add_fields(field_id_c_vars);
+        launcher.region_requirements[1].add_fields(field_id_p_vars);
+        rt->execute_index_space(ctx, launcher);
+    }
+
+    {// Fill up ghost points for periodic domain in p_vars
+        IndexCopyLauncher launcher_x(color_isp_ghost_x);
+        launcher_x.add_copy_requirements(
+                RegionRequirement(p_vars.patches_ghost_mirror_x_hi, 0, READ_ONLY,     EXCLUSIVE, p_vars.region),
+                RegionRequirement(p_vars.patches_ghost_x_lo,        0, WRITE_DISCARD, EXCLUSIVE, p_vars.region)
+        );
+        launcher_x.add_copy_requirements(
+                RegionRequirement(p_vars.patches_ghost_mirror_x_lo, 0, READ_ONLY,     EXCLUSIVE, p_vars.region),
+                RegionRequirement(p_vars.patches_ghost_x_hi,        0, WRITE_DISCARD, EXCLUSIVE, p_vars.region)
+        );
+        launcher_x.src_requirements[0].add_fields(field_id_p_vars);
+        launcher_x.dst_requirements[0].add_fields(field_id_p_vars);
+        launcher_x.src_requirements[1].add_fields(field_id_p_vars);
+        launcher_x.dst_requirements[1].add_fields(field_id_p_vars);
+
+        IndexCopyLauncher launcher_y(color_isp_ghost_y);
+        launcher_y.add_copy_requirements(
+                RegionRequirement(p_vars.patches_ghost_mirror_y_hi, 0, READ_ONLY,     EXCLUSIVE, p_vars.region),
+                RegionRequirement(p_vars.patches_ghost_y_lo,        0, WRITE_DISCARD, EXCLUSIVE, p_vars.region)
+        );
+        launcher_y.add_copy_requirements(
+                RegionRequirement(p_vars.patches_ghost_mirror_y_lo, 0, READ_ONLY,     EXCLUSIVE, p_vars.region),
+                RegionRequirement(p_vars.patches_ghost_y_hi,        0, WRITE_DISCARD, EXCLUSIVE, p_vars.region)
+        );
+        launcher_y.src_requirements[0].add_fields(field_id_p_vars);
+        launcher_y.dst_requirements[0].add_fields(field_id_p_vars);
+        launcher_y.src_requirements[1].add_fields(field_id_p_vars);
+        launcher_y.dst_requirements[1].add_fields(field_id_p_vars);
+    }
+
+    { // Launch calcRHS and write solutions to c2_vars
+        IndexLauncher launcher (
+                TASK_ID::CALC_RHS,
+                color_isp_int,
+                TaskArgument(&args_calcRHS, sizeof(ArgsCalcRHS)),
+                ArgumentMap()
+        );
+        launcher.add_region_requirement(RegionRequirement( p_vars.patches_ext, 0, READ_ONLY,     EXCLUSIVE,  p_vars.region));
+        launcher.add_region_requirement(RegionRequirement(c2_vars.patches_int, 0, WRITE_DISCARD, EXCLUSIVE, c2_vars.region));
+        launcher.region_requirements[0].add_fields(field_id_c_vars);
+        launcher.region_requirements[1].add_fields(field_id_p_vars);
+        rt->execute_index_space(ctx, launcher);
+    }
+
+    { // Launch taskSSPRK3LinearCombination1 and update c2 using c0
+        IndexLauncher launcher (
+                TASK_ID::SSPRK3_LINCOMB_1,
+                color_isp_int,
+                TaskArgument(),
+                ArgumentMap()
+        );
+        launcher.add_region_requirement(RegionRequirement(c0_vars.patches_int, 0, READ_ONLY,  EXCLUSIVE, c0_vars.region));
+        launcher.add_region_requirement(RegionRequirement(c2_vars.patches_int, 0, READ_WRITE, EXCLUSIVE, c2_vars.region));
+        launcher.region_requirements[0].add_fields(field_id_c_vars);
+        launcher.region_requirements[1].add_fields(field_id_c_vars);
+        rt->execute_index_space(ctx, launcher);
+    }
+
+    { // Launch taskConvertConservativeToPrimitive
+        IndexLauncher launcher (
+                TASK_ID::CVARS_TO_PVARS,
+                color_isp_int,
+                TaskArgument(&args_c2p, sizeof(ArgsConvertConservativeToPrimitive)),
+                ArgumentMap()
+        );
+        launcher.add_region_requirement(RegionRequirement(c2_vars.patches_int, 0, READ_ONLY,     EXCLUSIVE, c2_vars.region));
+        launcher.add_region_requirement(RegionRequirement( p_vars.patches_int, 0, WRITE_DISCARD, EXCLUSIVE,  p_vars.region));
+        launcher.region_requirements[0].add_fields(field_id_c_vars);
+        launcher.region_requirements[1].add_fields(field_id_p_vars);
+        rt->execute_index_space(ctx, launcher);
+    }
+
+    {// Fill up ghost points for periodic domain in p_vars
+        IndexCopyLauncher launcher_x(color_isp_ghost_x);
+        launcher_x.add_copy_requirements(
+                RegionRequirement(p_vars.patches_ghost_mirror_x_hi, 0, READ_ONLY,     EXCLUSIVE, p_vars.region),
+                RegionRequirement(p_vars.patches_ghost_x_lo,        0, WRITE_DISCARD, EXCLUSIVE, p_vars.region)
+        );
+        launcher_x.add_copy_requirements(
+                RegionRequirement(p_vars.patches_ghost_mirror_x_lo, 0, READ_ONLY,     EXCLUSIVE, p_vars.region),
+                RegionRequirement(p_vars.patches_ghost_x_hi,        0, WRITE_DISCARD, EXCLUSIVE, p_vars.region)
+        );
+        launcher_x.src_requirements[0].add_fields(field_id_p_vars);
+        launcher_x.dst_requirements[0].add_fields(field_id_p_vars);
+        launcher_x.src_requirements[1].add_fields(field_id_p_vars);
+        launcher_x.dst_requirements[1].add_fields(field_id_p_vars);
+
+        IndexCopyLauncher launcher_y(color_isp_ghost_y);
+        launcher_y.add_copy_requirements(
+                RegionRequirement(p_vars.patches_ghost_mirror_y_hi, 0, READ_ONLY,     EXCLUSIVE, p_vars.region),
+                RegionRequirement(p_vars.patches_ghost_y_lo,        0, WRITE_DISCARD, EXCLUSIVE, p_vars.region)
+        );
+        launcher_y.add_copy_requirements(
+                RegionRequirement(p_vars.patches_ghost_mirror_y_lo, 0, READ_ONLY,     EXCLUSIVE, p_vars.region),
+                RegionRequirement(p_vars.patches_ghost_y_hi,        0, WRITE_DISCARD, EXCLUSIVE, p_vars.region)
+        );
+        launcher_y.src_requirements[0].add_fields(field_id_p_vars);
+        launcher_y.dst_requirements[0].add_fields(field_id_p_vars);
+        launcher_y.src_requirements[1].add_fields(field_id_p_vars);
+        launcher_y.dst_requirements[1].add_fields(field_id_p_vars);
+    }
+
+    { // Launch calcRHS and write solutions to c1_vars
+        IndexLauncher launcher (
+                TASK_ID::CALC_RHS,
+                color_isp_int,
+                TaskArgument(&args_calcRHS, sizeof(ArgsCalcRHS)),
+                ArgumentMap()
+        );
+        launcher.add_region_requirement(RegionRequirement( p_vars.patches_ext, 0, READ_ONLY,     EXCLUSIVE,  p_vars.region));
+        launcher.add_region_requirement(RegionRequirement(c1_vars.patches_int, 0, WRITE_DISCARD, EXCLUSIVE, c1_vars.region));
+        launcher.region_requirements[0].add_fields(field_id_c_vars);
+        launcher.region_requirements[1].add_fields(field_id_p_vars);
+        rt->execute_index_space(ctx, launcher);
+    }
+
+    { // Launch taskSSPRK3LinearCombination2 and update c1 using c0
+        IndexLauncher launcher (
+                TASK_ID::SSPRK3_LINCOMB_2,
+                color_isp_int,
+                TaskArgument(),
+                ArgumentMap()
+        );
+        launcher.add_region_requirement(RegionRequirement(c1_vars.patches_int, 0, READ_ONLY,  EXCLUSIVE, c1_vars.region));
+        launcher.add_region_requirement(RegionRequirement(c0_vars.patches_int, 0, READ_WRITE, EXCLUSIVE, c0_vars.region));
+        launcher.region_requirements[0].add_fields(field_id_c_vars);
+        launcher.region_requirements[1].add_fields(field_id_c_vars);
+        rt->execute_index_space(ctx, launcher);
+    }
 
 }
+
+
+

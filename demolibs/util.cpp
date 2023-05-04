@@ -1,6 +1,7 @@
 
 #include "util.h"
 
+#if(0)
 IndexSpace getColorIndexSpaceInt(Context& ctx, Runtime* rt, const BaseGridConfig& grid_config) {
     Box2D color_bounds_int = Box2D(Point2D(1,1), Point2D(grid_config.NUM_PATCHES_X, grid_config.NUM_PATCHES_Y));
     return rt->create_index_space(ctx, color_bounds_int);
@@ -106,7 +107,7 @@ void initializeBaseGrid2D(Context& ctx, Runtime* rt, const BaseGridConfig grid_c
     IndexPartition idx_part_ext = rt->create_partition_by_restriction(ctx, grid_isp_ext, color_isp_int, transform, extent);
     region_of_fields.patches_ext = rt->get_logical_partition(ctx, region_of_fields.region, idx_part_ext);
 }
-
+#endif
 
 ////////////////////////////////////////////////////////////////////////////////////////
 
@@ -133,7 +134,6 @@ void initializeBaseGrid2DNew(Context& ctx, Runtime* rt, const BaseGridConfig gri
 
 
     /*** CREATE GLOBAL GRID AND COLOR INDEX SPACES ***/
-    region_of_fields.region = rt->create_logical_region(ctx, grid_isp_ext, fspace);
     //Box2D      grid_bounds_int = Box2D(Point2D(0, 0), Point2D(NUM_GRID_POINTS_X_INT - 1, NUM_GRID_POINTS_X_INT - 1));
     Box2D      grid_bounds_ext = Box2D(Point2D(-NUM_GHOSTS, -NUM_GHOSTS), Point2D(NUM_GHOSTS + NUM_GRID_POINTS_X_INT - 1, NUM_GHOSTS + NUM_GRID_POINTS_Y_INT - 1));
     Box2D     color_bounds_int = Box2D(Point2D(0,0), Point2D(grid_config.NUM_PATCHES_X-1, grid_config.NUM_PATCHES_Y-1));
@@ -142,8 +142,8 @@ void initializeBaseGrid2DNew(Context& ctx, Runtime* rt, const BaseGridConfig gri
     //IndexSpace grid_isp_int      = rt->create_index_space(ctx, grid_bounds_int);
     IndexSpace grid_isp_ext      = rt->create_index_space(ctx, grid_bounds_ext);
     IndexSpace color_isp_int     = rt->create_index_space(ctx, color_bounds_int);
-    IndexSpace color_isp_ghost_x = rt->create_index_space(ctx, color_isp_ghost_x);
-    IndexSpace color_isp_ghost_y = rt->create_index_space(ctx, color_isp_ghost_y);
+    IndexSpace color_isp_ghost_x = rt->create_index_space(ctx, color_bounds_ghost_x);
+    IndexSpace color_isp_ghost_y = rt->create_index_space(ctx, color_bounds_ghost_y);
     IndexSpace grid_isp_ghost_x_lo = rt->create_index_space(ctx, Box2D(Point2D(-NUM_GHOSTS, 0), Point2D(-1, NUM_GRID_POINTS_Y_INT - 1)));
     IndexSpace grid_isp_ghost_x_hi = rt->create_index_space(ctx, Box2D(Point2D(NUM_GRID_POINTS_X_INT, 0), Point2D(NUM_GRID_POINTS_X_INT + NUM_GHOSTS - 1, NUM_GRID_POINTS_Y_INT - 1)));
     IndexSpace grid_isp_ghost_mirror_x_lo = rt->create_index_space(ctx, Box2D(Point2D(0, 0), Point2D(NUM_GHOSTS - 1, NUM_GRID_POINTS_Y_INT - 1)));
@@ -154,6 +154,9 @@ void initializeBaseGrid2DNew(Context& ctx, Runtime* rt, const BaseGridConfig gri
     IndexSpace grid_isp_ghost_mirror_y_hi = rt->create_index_space(ctx, Box2D(Point2D(0, NUM_GRID_POINTS_Y_INT - NUM_GHOSTS), Point2D(NUM_GRID_POINTS_X_INT - 1, NUM_GRID_POINTS_Y_INT - 1)));
 
     /*** CREATE LOGICAL PARTITIONS ***/
+    // Create parent region
+    region_of_fields.region = rt->create_logical_region(ctx, grid_isp_ext, fspace);
+
     // Ghost boundary partitions in x-direction
     std::map<DomainPoint, Domain> domain_map_ghost_x_lo;
     std::map<DomainPoint, Domain> domain_map_ghost_x_hi;

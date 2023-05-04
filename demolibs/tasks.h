@@ -35,21 +35,14 @@ struct TASK_ID {
         TOP_LEVEL,
         MESH_GEN,
         SET_INIT_COND,
+        PVARS_TO_CVARS,
+        CVARS_TO_PVARS,
         CALC_RHS,
+        SSPRK3_LINCOMB_1,
+        SSPRK3_LINCOMB_2,
         SIZE
     };
 };
-
-
-void registerAllTasks();
-void taskTopLevel                      (const Task*, const std::vector<PhysicalRegion>&, Context, Runtime*);
-void taskMeshGen                       (const Task*, const std::vector<PhysicalRegion>&, Context, Runtime*);
-void taskSetInitialCondition           (const Task*, const std::vector<PhysicalRegion>&, Context, Runtime*);
-void taskConvertPrimitiveToConservative(const Task*, const std::vector<PhysicalRegion>&, Context, Runtime*);
-void taskConvertConservativeToPrimitive(const Task*, const std::vector<PhysicalRegion>&, Context, Runtime*);
-void taskCalcRHS                       (const Task*, const std::vector<PhysicalRegion>&, Context, Runtime*);
-void taskSSPRK3                        (const Task*, const std::vector<PhysicalRegion>&, Context, Runtime*);
-
 
 struct ArgsMeshGen {
     Real Lx;
@@ -61,12 +54,13 @@ struct ArgsMeshGen {
     Point2D origin;
 };
 
-struct ArgsConvertPrimitiveToConservative{ int stage_id; Real R_gas; Real gamma; };
-struct ArgsConvertConservativeToPrimitive{ int stage_id; Real R_gas; Real gamma; };
+struct ArgsConvertPrimitiveToConservative{ Real R_gas; Real gamma; };
+struct ArgsConvertConservativeToPrimitive{ Real R_gas; Real gamma; };
 
 struct ArgsCalcRHS {
     Real dx;
     Real dy;
+    Real dt;
     int stage_id_now;
     int stage_id_ddt;
     int stencil_size;
@@ -77,5 +71,27 @@ struct ArgsCalcRHS {
     Real visc_exp;
     Real Pr;
 };
+
+
+struct ArgsSolve {
+    Real R_gas;
+    Real gamma;
+    Real dt;
+    Real dx;
+    Real dy;
+};
+
+
+void registerAllTasks();
+void taskTopLevel                      (const Task*, const std::vector<PhysicalRegion>&, Context, Runtime*);
+void taskMeshGen                       (const Task*, const std::vector<PhysicalRegion>&, Context, Runtime*);
+void taskSetInitialCondition           (const Task*, const std::vector<PhysicalRegion>&, Context, Runtime*);
+void taskConvertPrimitiveToConservative(const Task*, const std::vector<PhysicalRegion>&, Context, Runtime*);
+void taskConvertConservativeToPrimitive(const Task*, const std::vector<PhysicalRegion>&, Context, Runtime*);
+void taskCalcRHS                       (const Task*, const std::vector<PhysicalRegion>&, Context, Runtime*);
+void taskSSPRK3LinearCombination1      (const Task*, const std::vector<PhysicalRegion>&, Context, Runtime*);
+void taskSSPRK3LinearCombination2      (const Task*, const std::vector<PhysicalRegion>&, Context, Runtime*);
+void launchSSPRK3(IndexSpace&, IndexSpace&, IndexSpace&, RegionOfFields&, RegionOfFields&, RegionOfFields&, RegionOfFields&, ArgsSolve&, Context, Runtime*); 
+
 
 #endif

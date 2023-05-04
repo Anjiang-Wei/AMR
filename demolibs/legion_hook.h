@@ -27,6 +27,7 @@ typedef Legion::Task                Task;
 typedef Legion::Future              Future;
 typedef Legion::RegionRequirement   RegionRequirement;
 typedef Legion::CopyLauncher        CopyLauncher;
+typedef Legion::IndexCopyLauncher   IndexCopyLauncher;
 typedef Legion::AttachLauncher      AttachLauncher;
 typedef Legion::FieldSpace          FieldSpace;
 typedef Legion::FieldID             FieldID;

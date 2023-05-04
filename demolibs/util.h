@@ -31,9 +31,9 @@ struct RegionOfFields {
     LogicalPartition patches_ghost_mirror_y_hi;
 };
 
-IndexSpace getColorIndexSpaceInt(Context&, Runtime*, const BaseGridConfig&);
-IndexSpace getColorIndexSpaceExt(Context&, Runtime*, const BaseGridConfig&);
+//IndexSpace getColorIndexSpaceInt(Context&, Runtime*, const BaseGridConfig&);
+//IndexSpace getColorIndexSpaceExt(Context&, Runtime*, const BaseGridConfig&);
 
-void initializeBaseGrid2D(Context&, Runtime*, const BaseGridConfig, const uint_t, RegionOfFields&);
+void initializeBaseGrid2DNew(Context&, Runtime*, const BaseGridConfig, const uint_t, RegionOfFields&);
 
 #endif
