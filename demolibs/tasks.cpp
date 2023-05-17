@@ -4,7 +4,48 @@
 
 
 void registerAllTasks() {
+    Legion::Runtime::set_top_level_task_id(static_cast<int>(TASK_ID::TOP_LEVEL));
 
+    {
+        Legion::TaskVariantRegistrar registrar(static_cast<int>(TASK_ID::TOP_LEVEL), "top_level_task");
+        registrar.add_constraint(Legion::ProcessorConstraint(Legion::Processor::LOC_PROC));
+        Legion::Runtime::preregister_task_variant<taskTopLevel>(registrar, "top_level_task");
+    }
+    {
+        Legion::TaskVariantRegistrar registrar(static_cast<int>(TASK_ID::MESH_GEN), "mesh generation");
+        registrar.add_constraint(Legion::ProcessorConstraint(Legion::Processor::LOC_PROC));
+        Legion::Runtime::preregister_task_variant<taskMeshGen>(registrar, "mesh generation");
+    }
+    {
+        Legion::TaskVariantRegistrar registrar(static_cast<int>(TASK_ID::SET_INIT_COND), "set initial condition");
+        registrar.add_constraint(Legion::ProcessorConstraint(Legion::Processor::LOC_PROC));
+        Legion::Runtime::preregister_task_variant<taskSetInitialCondition>(registrar, "set initial condition");
+    }
+    {
+        Legion::TaskVariantRegistrar registrar(static_cast<int>(TASK_ID::PVARS_TO_CVARS), "primitive to conservative");
+        registrar.add_constraint(Legion::ProcessorConstraint(Legion::Processor::LOC_PROC));
+        Legion::Runtime::preregister_task_variant<taskConvertPrimitiveToConservative>(registrar, "primitive to conservative");
+    }
+    {
+        Legion::TaskVariantRegistrar registrar(static_cast<int>(TASK_ID::CVARS_TO_PVARS), "conservative to primitive");
+        registrar.add_constraint(Legion::ProcessorConstraint(Legion::Processor::LOC_PROC));
+        Legion::Runtime::preregister_task_variant<taskConvertConservativeToPrimitive>(registrar, "conservative to primitive");
+    }
+    {
+        Legion::TaskVariantRegistrar registrar(static_cast<int>(TASK_ID::CALC_RHS), "calculate rhs");
+        registrar.add_constraint(Legion::ProcessorConstraint(Legion::Processor::LOC_PROC));
+        Legion::Runtime::preregister_task_variant<taskCalcRHS>(registrar, "calculate rhs");
+    }
+    {
+        Legion::TaskVariantRegistrar registrar(static_cast<int>(TASK_ID::SSPRK3_LINCOMB_1), "SSPRK3 linear combination 1");
+        registrar.add_constraint(Legion::ProcessorConstraint(Legion::Processor::LOC_PROC));
+        Legion::Runtime::preregister_task_variant<taskSSPRK3LinearCombination1>(registrar, "SSPRK3 linear combination 1");
+    }
+    {
+        Legion::TaskVariantRegistrar registrar(static_cast<int>(TASK_ID::SSPRK3_LINCOMB_2), "SSPRK3 linear combination 2");
+        registrar.add_constraint(Legion::ProcessorConstraint(Legion::Processor::LOC_PROC));
+        Legion::Runtime::preregister_task_variant<taskSSPRK3LinearCombination2>(registrar, "SSPRK3 linear combination 2");
+    }
 }
 
 
@@ -34,6 +75,10 @@ void taskTopLevel(const Task* task, const std::vector<PhysicalRegion>& rgns, Con
     RegionOfFields c2_vars; // conservative variables
     RegionOfFields p_vars;  // primitive variables
 
+    const std::vector<unsigned int> field_id_coords {0, 1};
+    const std::vector<unsigned int> field_id_c_vars {0, 1, 2, 3};
+    const std::vector<unsigned int> field_id_p_vars {0, 1, 2, 3};
+
     Box2D color_bounds_int = Box2D(Point2D(0,0), Point2D(grid_config.NUM_PATCHES_X-1, grid_config.NUM_PATCHES_Y-1));
     IndexSpace color_isp_int = rt->create_index_space(ctx, color_bounds_int);
     initializeBaseGrid2DNew(ctx, rt, grid_config, CVARS_ID::SIZE, c0_vars);
@@ -41,6 +86,68 @@ void taskTopLevel(const Task* task, const std::vector<PhysicalRegion>& rgns, Con
     initializeBaseGrid2DNew(ctx, rt, grid_config, CVARS_ID::SIZE, c2_vars);
     initializeBaseGrid2DNew(ctx, rt, grid_config, PVARS_ID::SIZE, p_vars);
     initializeBaseGrid2DNew(ctx, rt, grid_config, COORD_ID::SIZE, coords);
+
+    ArgsSolve args_solve;
+    args_solve.R_gas = 1.0;
+    args_solve.gamma = 1.4;
+    args_solve.dt    = 1e-3;
+    args_solve.dx    = 1.0 / (grid_config.PATCH_SIZE * grid_config.NUM_PATCHES_X);
+    args_solve.dy    = 1.0 / (grid_config.PATCH_SIZE * grid_config.NUM_PATCHES_Y);
+
+    // Mesh generation
+    { // Launch taskMeshGen
+        ArgsMeshGen args_mesh_gen;
+        args_mesh_gen.Lx       = grid_config.LX;
+        args_mesh_gen.Ly       = grid_config.LY;
+        args_mesh_gen.offset_x = 0.0;
+        args_mesh_gen.offset_y = 0.0;
+        args_mesh_gen.Nx       = grid_config.PATCH_SIZE * grid_config.NUM_PATCHES_X;
+        args_mesh_gen.Ny       = grid_config.PATCH_SIZE * grid_config.NUM_PATCHES_Y;
+        args_mesh_gen.origin   = Point2D(0, 0);
+        IndexLauncher launcher (
+                TASK_ID::MESH_GEN,
+                color_isp_int,
+                TaskArgument(&args_mesh_gen, sizeof(ArgsMeshGen)),
+                ArgumentMap()
+        );
+        launcher.add_region_requirement(RegionRequirement(coords.patches_int, 0, WRITE_DISCARD, EXCLUSIVE, coords.region));
+        launcher.region_requirements[0].add_fields(field_id_coords);
+        rt->execute_index_space(ctx, launcher);
+    }
+
+    // Set initial condition
+    { // Launch taskSetInitialCondition
+        IndexLauncher launcher (
+                TASK_ID::SET_INIT_COND,
+                color_isp_int,
+                TaskArgument(NULL, 0),
+                ArgumentMap()
+        );
+        launcher.add_region_requirement(RegionRequirement(coords.patches_int, 0, READ_ONLY,     EXCLUSIVE, coords.region));
+        launcher.add_region_requirement(RegionRequirement(p_vars.patches_int, 0, WRITE_DISCARD, EXCLUSIVE, p_vars.region));
+        launcher.region_requirements[0].add_fields(field_id_coords);
+        launcher.region_requirements[1].add_fields(field_id_p_vars);
+        rt->execute_index_space(ctx, launcher);
+    }
+
+    { // Launch taskConvertPrimitiveToConservative
+        ArgsConvertPrimitiveToConservative args_p2c;
+        args_p2c.R_gas = args_solve.R_gas;
+        args_p2c.gamma = args_solve.gamma;
+        IndexLauncher launcher (
+                TASK_ID::CVARS_TO_PVARS,
+                color_isp_int,
+                TaskArgument(&args_p2c, sizeof(ArgsConvertConservativeToPrimitive)),
+                ArgumentMap()
+        );
+        launcher.add_region_requirement(RegionRequirement( p_vars.patches_int, 0, READ_ONLY,     EXCLUSIVE,  p_vars.region));
+        launcher.add_region_requirement(RegionRequirement(c0_vars.patches_int, 0, WRITE_DISCARD, EXCLUSIVE, c0_vars.region));
+        launcher.region_requirements[0].add_fields(field_id_p_vars);
+        launcher.region_requirements[1].add_fields(field_id_c_vars);
+        rt->execute_index_space(ctx, launcher);
+    }
+
+
 }
 
 
@@ -51,7 +158,6 @@ void taskTopLevel(const Task* task, const std::vector<PhysicalRegion>& rgns, Con
  * Fields:
  *     [wo][0] COORD::X
  *     [wo][0] COORD::Y
- *     [wo][0] COORD::Z
  *
  * Args: ArgsMeshGen
  */

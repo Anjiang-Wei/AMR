@@ -6,47 +6,12 @@
 #include <hdf5.h>
 #endif
 
-//constexpr unsigned long PATCH_SIZE    = 4;
-//constexpr unsigned long NUM_PATCHES_X = 3;
-//constexpr unsigned long NUM_PATCHES_Y = 3;
-//constexpr unsigned long STENCIL_WIDTH = 5;
-//constexpr Real          t_final       = 10.0;
-//constexpr Real          viscosity     = 10.0;
-//constexpr Real          Prandtl       = 1.0;
-//constexpr Real          Rg            = 1.0;
-//constexpr Real          gamma         = 1.4;
 
-// Fieldspace of primitive variables
-
-
-//// Fieldspace of conservative variables
-//enum class CVARS_ID {
-//   MASS, MMTX, MMTY, ENRG, 
-//   SIZE
-//};
-//
-//enum class STAGE3_CVARS_ID {
-//   MASS_0, MMTX_0, MMTY_0, ENRG_0, 
-//   MASS_1, MMTX_1, MMTY_1, ENRG_1, 
-//   MASS_2, MMTX_2, MMTY_2, ENRG_2, 
-//   SIZE
-//};
-//
-//// Fieldspace of buffer variables
-//enum class BVARS_ID {
-//    PRSES,
-//    DUDX, DUDY, DVDX, DVDY,
-//    SIZE
-//};
-
-
-
+#if(USE_HDF5)
 enum class COPY_ID {
     FID_CP,
 };
 
-
-#if(USE_HDF5)
 bool generate_hdf_file(const char *file_name, const char *dataset_name, int num_elements)
 {
     // strip off any filename prefix starting with a colon
@@ -383,50 +348,7 @@ bool generate_hdf_file(const char *file_name, const char *dataset_name, int num_
 int main(int argc, char* argv[]) {
 
     printf("Hello World from the real main test!\n");
-
-    Legion::Runtime::set_top_level_task_id(static_cast<int>(TASK_ID::TOP_LEVEL));
-
-    {
-        Legion::TaskVariantRegistrar registrar(static_cast<int>(TASK_ID::TOP_LEVEL), "top_level_task");
-        registrar.add_constraint(Legion::ProcessorConstraint(Legion::Processor::LOC_PROC));
-        Legion::Runtime::preregister_task_variant<taskTopLevel>(registrar, "top_level_task");
-    }
-    {
-        Legion::TaskVariantRegistrar registrar(static_cast<int>(TASK_ID::MESH_GEN), "mesh generation");
-        registrar.add_constraint(Legion::ProcessorConstraint(Legion::Processor::LOC_PROC));
-        Legion::Runtime::preregister_task_variant<taskMeshGen>(registrar, "mesh generation");
-    }
-    {
-        Legion::TaskVariantRegistrar registrar(static_cast<int>(TASK_ID::SET_INIT_COND), "set initial condition");
-        registrar.add_constraint(Legion::ProcessorConstraint(Legion::Processor::LOC_PROC));
-        Legion::Runtime::preregister_task_variant<taskSetInitialCondition>(registrar, "set initial condition");
-    }
-    {
-        Legion::TaskVariantRegistrar registrar(static_cast<int>(TASK_ID::PVARS_TO_CVARS), "primitive to conservative");
-        registrar.add_constraint(Legion::ProcessorConstraint(Legion::Processor::LOC_PROC));
-        Legion::Runtime::preregister_task_variant<taskConvertPrimitiveToConservative>(registrar, "primitive to conservative");
-    }
-    {
-        Legion::TaskVariantRegistrar registrar(static_cast<int>(TASK_ID::CVARS_TO_PVARS), "conservative to primitive");
-        registrar.add_constraint(Legion::ProcessorConstraint(Legion::Processor::LOC_PROC));
-        Legion::Runtime::preregister_task_variant<taskConvertConservativeToPrimitive>(registrar, "conservative to primitive");
-    }
-    {
-        Legion::TaskVariantRegistrar registrar(static_cast<int>(TASK_ID::CALC_RHS), "calculate rhs");
-        registrar.add_constraint(Legion::ProcessorConstraint(Legion::Processor::LOC_PROC));
-        Legion::Runtime::preregister_task_variant<taskCalcRHS>(registrar, "calculate rhs");
-    }
-    {
-        Legion::TaskVariantRegistrar registrar(static_cast<int>(TASK_ID::SSPRK3_LINCOMB_1), "SSPRK3 linear combination 1");
-        registrar.add_constraint(Legion::ProcessorConstraint(Legion::Processor::LOC_PROC));
-        Legion::Runtime::preregister_task_variant<taskSSPRK3LinearCombination1>(registrar, "SSPRK3 linear combination 1");
-    }
-    {
-        Legion::TaskVariantRegistrar registrar(static_cast<int>(TASK_ID::SSPRK3_LINCOMB_2), "SSPRK3 linear combination 2");
-        registrar.add_constraint(Legion::ProcessorConstraint(Legion::Processor::LOC_PROC));
-        Legion::Runtime::preregister_task_variant<taskSSPRK3LinearCombination2>(registrar, "SSPRK3 linear combination 2");
-    }
-
+    registerAllTasks();
     return Legion::Runtime::start(argc, argv);
 
 }
