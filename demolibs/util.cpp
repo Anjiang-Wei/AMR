@@ -21,7 +21,7 @@ void initializeBaseGrid2D(Context& ctx, Runtime* rt, const BaseGridConfig grid_c
     const uint_t PATCH_SIZE    = grid_config.PATCH_SIZE;
     const uint_t NUM_PATCHES_X = grid_config.NUM_PATCHES_X;
     const uint_t NUM_PATCHES_Y = grid_config.NUM_PATCHES_Y;
-    const uint_t STENCIL_WIDTH = grid_config.STENCIL_WIDTH * 2 - 3;
+    const uint_t STENCIL_WIDTH = grid_config.STENCIL_WIDTH * 2 - 1;
 
     const uint_t NUM_GHOSTS            = STENCIL_WIDTH / 2;
     const uint_t NUM_GRID_POINTS_X_EXT = NUM_GHOSTS * 2 + NUM_PATCHES_X * PATCH_SIZE;

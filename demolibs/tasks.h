@@ -8,8 +8,8 @@
 #include "physical_models.h"
 #include <vector>
 
-constexpr int STENCIL_SIZE = 5;
-constexpr unsigned int NUM_REGISTERS = 3; // number of registers for timestepping
+//constexpr int STENCIL_SIZE = 5;
+//constexpr unsigned int NUM_REGISTERS = 3; // number of registers for timestepping
 
 struct CVARS_ID {
     enum {
@@ -79,6 +79,8 @@ struct ArgsSolve {
     Real dt;
     Real dx;
     Real dy;
+    uint_t num_iter;
+    int stencil_size;
 };
 
 

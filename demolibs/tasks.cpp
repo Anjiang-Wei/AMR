@@ -1,6 +1,7 @@
 
 #include "tasks.h"
 #include <cmath>
+#include <cstdio>
 
 
 void registerAllTasks() {
@@ -59,6 +60,7 @@ void taskTopLevel(const Task* task, const std::vector<PhysicalRegion>& rgns, Con
     char** argv = Legion::Runtime::get_input_args().argv;
     (void) argc; (void) argv; 
 
+    /********************************************************************************/
     BaseGridConfig grid_config = {
         8,   // PATCH_SIZE
         4,   // NUM_PATCHES_X
@@ -67,6 +69,16 @@ void taskTopLevel(const Task* task, const std::vector<PhysicalRegion>& rgns, Con
         1.0, // LX
         1.0, // LY
     };
+
+    ArgsSolve args_solve;
+    args_solve.R_gas        = 1.0;
+    args_solve.gamma        = 1.4;
+    args_solve.dt           = 1e-3;
+    args_solve.dx           = 1.0 / (grid_config.PATCH_SIZE * grid_config.NUM_PATCHES_X);
+    args_solve.dy           = 1.0 / (grid_config.PATCH_SIZE * grid_config.NUM_PATCHES_Y);
+    args_solve.stencil_size = grid_config.STENCIL_WIDTH;
+    args_solve.num_iter     = 1;
+    /********************************************************************************/
 
 
     RegionOfFields coords;  // coordinates
@@ -79,23 +91,28 @@ void taskTopLevel(const Task* task, const std::vector<PhysicalRegion>& rgns, Con
     const std::vector<unsigned int> field_id_c_vars {0, 1, 2, 3};
     const std::vector<unsigned int> field_id_p_vars {0, 1, 2, 3};
 
-    Box2D color_bounds_int = Box2D(Point2D(0,0), Point2D(grid_config.NUM_PATCHES_X-1, grid_config.NUM_PATCHES_Y-1));
-    IndexSpace color_isp_int = rt->create_index_space(ctx, color_bounds_int);
+    Box2D color_bounds_int     = Box2D(Point2D(0,0), Point2D(grid_config.NUM_PATCHES_X-1, grid_config.NUM_PATCHES_Y-1));
+    Box2D color_bounds_ghost_x = Box2D(Point2D(0,0), Point2D(0, grid_config.NUM_PATCHES_Y-1));
+    Box2D color_bounds_ghost_y = Box2D(Point2D(0,0), Point2D(grid_config.NUM_PATCHES_X-1, 0));
+    IndexSpace color_isp_int     = rt->create_index_space(ctx, color_bounds_int);
+    IndexSpace color_isp_ghost_x = rt->create_index_space(ctx, color_bounds_ghost_x);
+    IndexSpace color_isp_ghost_y = rt->create_index_space(ctx, color_bounds_ghost_y);
     initializeBaseGrid2DNew(ctx, rt, grid_config, CVARS_ID::SIZE, c0_vars);
     initializeBaseGrid2DNew(ctx, rt, grid_config, CVARS_ID::SIZE, c1_vars);
     initializeBaseGrid2DNew(ctx, rt, grid_config, CVARS_ID::SIZE, c2_vars);
     initializeBaseGrid2DNew(ctx, rt, grid_config, PVARS_ID::SIZE, p_vars);
     initializeBaseGrid2DNew(ctx, rt, grid_config, COORD_ID::SIZE, coords);
 
-    ArgsSolve args_solve;
-    args_solve.R_gas = 1.0;
-    args_solve.gamma = 1.4;
-    args_solve.dt    = 1e-3;
-    args_solve.dx    = 1.0 / (grid_config.PATCH_SIZE * grid_config.NUM_PATCHES_X);
-    args_solve.dy    = 1.0 / (grid_config.PATCH_SIZE * grid_config.NUM_PATCHES_Y);
+    // Initialize fields
+    rt->fill_fields(ctx, c0_vars.region, c0_vars.region, std::set<uint>(field_id_c_vars.begin(), field_id_c_vars.end()), 0.0);
+    rt->fill_fields(ctx, c1_vars.region, c1_vars.region, std::set<uint>(field_id_c_vars.begin(), field_id_c_vars.end()), 0.0);
+    rt->fill_fields(ctx, c2_vars.region, c2_vars.region, std::set<uint>(field_id_c_vars.begin(), field_id_c_vars.end()), 0.0);
+    rt->fill_fields(ctx,  p_vars.region,  p_vars.region, std::set<uint>(field_id_p_vars.begin(), field_id_p_vars.end()), 0.0);
+    rt->fill_fields(ctx,  coords.region,  coords.region, std::set<uint>(field_id_coords.begin(), field_id_coords.end()), 0.0);
 
     // Mesh generation
     { // Launch taskMeshGen
+        printf("Generate computational mesh ... ");
         ArgsMeshGen args_mesh_gen;
         args_mesh_gen.Lx       = grid_config.LX;
         args_mesh_gen.Ly       = grid_config.LY;
@@ -113,10 +130,12 @@ void taskTopLevel(const Task* task, const std::vector<PhysicalRegion>& rgns, Con
         launcher.add_region_requirement(RegionRequirement(coords.patches_int, 0, WRITE_DISCARD, EXCLUSIVE, coords.region));
         launcher.region_requirements[0].add_fields(field_id_coords);
         rt->execute_index_space(ctx, launcher);
+        printf("Done!\n");
     }
 
     // Set initial condition
     { // Launch taskSetInitialCondition
+        printf("Set initial conditions ... ");
         IndexLauncher launcher (
                 TASK_ID::SET_INIT_COND,
                 color_isp_int,
@@ -128,9 +147,11 @@ void taskTopLevel(const Task* task, const std::vector<PhysicalRegion>& rgns, Con
         launcher.region_requirements[0].add_fields(field_id_coords);
         launcher.region_requirements[1].add_fields(field_id_p_vars);
         rt->execute_index_space(ctx, launcher);
+        printf("Done!\n");
     }
 
     { // Launch taskConvertPrimitiveToConservative
+        printf("Convert primitive variables to conservative variables ... ");
         ArgsConvertPrimitiveToConservative args_p2c;
         args_p2c.R_gas = args_solve.R_gas;
         args_p2c.gamma = args_solve.gamma;
@@ -145,8 +166,14 @@ void taskTopLevel(const Task* task, const std::vector<PhysicalRegion>& rgns, Con
         launcher.region_requirements[0].add_fields(field_id_p_vars);
         launcher.region_requirements[1].add_fields(field_id_c_vars);
         rt->execute_index_space(ctx, launcher);
+        printf("Done!\n");
     }
 
+    printf("Starting time iterations:\n");
+    for (int it = 0; it < args_solve.num_iter; it++) {
+        launchSSPRK3(color_isp_int, color_isp_ghost_x, color_isp_ghost_y, c0_vars, c1_vars, c2_vars, p_vars, args_solve, ctx, rt);
+        printf("  -- Iteration %04d done!\n", it);
+    }
 
 }
 
@@ -355,6 +382,7 @@ void taskCalcRHS(const Task* task, const std::vector<PhysicalRegion>& rgns, Cont
 
     auto args = reinterpret_cast<ArgsCalcRHS*>(task->args);
     const int STAGE_ID_NOW = args->stage_id_now;
+    const int STENCIL_SIZE = args->stencil_size;
     const Real          Rg = args->R_gas;
     const Real         gam = args->gamma;
     const Real      mu_ref = args->mu_ref;
@@ -384,8 +412,8 @@ void taskCalcRHS(const Task* task, const std::vector<PhysicalRegion>& rgns, Cont
     const FieldAccessor<WRITE_DISCARD, Real, 2> ddt_mmty(rgn_cvars_w, CVARS_ID::MMTY);
     const FieldAccessor<WRITE_DISCARD, Real, 2> ddt_enrg(rgn_cvars_w, CVARS_ID::ENRG);
 
-    constexpr int EDGE_STENCIL_SIZE = STENCIL_SIZE - 1;
-    Box2D isp_domain = rt->get_index_space_domain(ctx, task->regions[0].region.get_index_space());
+    const int EDGE_STENCIL_SIZE = STENCIL_SIZE - 1;
+    Box2D isp_domain = rt->get_index_space_domain(ctx, task->regions[2].region.get_index_space());
     for (PointInBox2D pir(isp_domain); pir(); pir++) {
         Point2D ij   = *pir;
 
@@ -398,7 +426,7 @@ void taskCalcRHS(const Task* task, const std::vector<PhysicalRegion>& rgns, Cont
             Point2D ijw2 = ij + Point2D(idx_edge-3, 0); 
             Point2D ijw1 = ij + Point2D(idx_edge-2, 0); 
             Point2D ije1 = ij + Point2D(idx_edge-1, 0); 
-            Point2D ije2 = ij; 
+            Point2D ije2 = ij + Point2D(idx_edge  , 0); 
 
             // Load variables at edges
             const Real p_coll_ijw2 = rho_coll[ijw2] * Rg * T_coll[ijw2];
@@ -438,7 +466,7 @@ void taskCalcRHS(const Task* task, const std::vector<PhysicalRegion>& rgns, Cont
             flx_mass[idx_edge] = -rho * u;
             flx_mmtx[idx_edge] = -rho * u * u - p + str11;
             flx_mmty[idx_edge] = -rho * v * u     + str21;
-            flx_enrg[idx_edge] = -rho * h * u + u * str11 + v * str21;
+            flx_enrg[idx_edge] = -rho * h * u + u * str11 + v * str21 + kap * gradT;
         }
         const Real ddt_mass_x = ed04Stag(flx_mass[0], flx_mass[1], flx_mass[2], flx_mass[3], dx_inv);
         const Real ddt_mmtx_x = ed04Stag(flx_mmtx[0], flx_mmtx[1], flx_mmtx[2], flx_mmtx[3], dx_inv);
@@ -489,7 +517,7 @@ void taskCalcRHS(const Task* task, const std::vector<PhysicalRegion>& rgns, Cont
             flx_mass[idx_edge] = -rho * v;
             flx_mmtx[idx_edge] = -rho * u * v     + str12;
             flx_mmty[idx_edge] = -rho * v * v -p  + str22;
-            flx_enrg[idx_edge] = -rho * h * v + u * str12 + v * str22;
+            flx_enrg[idx_edge] = -rho * h * v + u * str12 + v * str22 + kap * gradT;
         }
         const Real ddt_mass_y = ed04Stag(flx_mass[0], flx_mass[1], flx_mass[2], flx_mass[3], dy_inv);
         const Real ddt_mmtx_y = ed04Stag(flx_mmtx[0], flx_mmtx[1], flx_mmtx[2], flx_mmtx[3], dy_inv);
@@ -590,6 +618,7 @@ void taskSSPRK3LinearCombination2(const Task* task, const std::vector<PhysicalRe
 }
 
 
+
 /*
  * Function of launchers to conduct SSPRK3
  * Integrate resluts from t to t+dt
@@ -615,11 +644,12 @@ void launchSSPRK3(IndexSpace& color_isp_int, IndexSpace& color_isp_ghost_x, Inde
         };
     *****************/
     ArgsCalcRHS args_calcRHS;
-    args_calcRHS.dt    = args.dt;
-    args_calcRHS.dx    = args.dx;
-    args_calcRHS.dy    = args.dy;
-    args_calcRHS.R_gas = args.R_gas;
-    args_calcRHS.gamma = args.gamma;
+    args_calcRHS.dt           = args.dt;
+    args_calcRHS.dx           = args.dx;
+    args_calcRHS.dy           = args.dy;
+    args_calcRHS.R_gas        = args.R_gas;
+    args_calcRHS.gamma        = args.gamma;
+    args_calcRHS.stencil_size = args.stencil_size;
 
     ArgsConvertConservativeToPrimitive args_c2p;
     args_c2p.R_gas = args.R_gas;
@@ -680,9 +710,11 @@ void launchSSPRK3(IndexSpace& color_isp_int, IndexSpace& color_isp_ghost_x, Inde
                 ArgumentMap()
         );
         launcher.add_region_requirement(RegionRequirement( p_vars.patches_ext, 0, READ_ONLY,     EXCLUSIVE,  p_vars.region));
+        launcher.add_region_requirement(RegionRequirement(c0_vars.patches_int, 0, READ_ONLY,     EXCLUSIVE, c0_vars.region));
         launcher.add_region_requirement(RegionRequirement(c1_vars.patches_int, 0, WRITE_DISCARD, EXCLUSIVE, c1_vars.region));
-        launcher.region_requirements[0].add_fields(field_id_c_vars);
-        launcher.region_requirements[1].add_fields(field_id_p_vars);
+        launcher.region_requirements[0].add_fields(field_id_p_vars);
+        launcher.region_requirements[1].add_fields(field_id_c_vars);
+        launcher.region_requirements[2].add_fields(field_id_c_vars);
         rt->execute_index_space(ctx, launcher);
     }
 
@@ -738,9 +770,11 @@ void launchSSPRK3(IndexSpace& color_isp_int, IndexSpace& color_isp_ghost_x, Inde
                 ArgumentMap()
         );
         launcher.add_region_requirement(RegionRequirement( p_vars.patches_ext, 0, READ_ONLY,     EXCLUSIVE,  p_vars.region));
+        launcher.add_region_requirement(RegionRequirement(c1_vars.patches_int, 0, READ_ONLY,     EXCLUSIVE, c1_vars.region));
         launcher.add_region_requirement(RegionRequirement(c2_vars.patches_int, 0, WRITE_DISCARD, EXCLUSIVE, c2_vars.region));
-        launcher.region_requirements[0].add_fields(field_id_c_vars);
-        launcher.region_requirements[1].add_fields(field_id_p_vars);
+        launcher.region_requirements[0].add_fields(field_id_p_vars);
+        launcher.region_requirements[1].add_fields(field_id_c_vars);
+        launcher.region_requirements[2].add_fields(field_id_c_vars);
         rt->execute_index_space(ctx, launcher);
     }
 
@@ -810,9 +844,11 @@ void launchSSPRK3(IndexSpace& color_isp_int, IndexSpace& color_isp_ghost_x, Inde
                 ArgumentMap()
         );
         launcher.add_region_requirement(RegionRequirement( p_vars.patches_ext, 0, READ_ONLY,     EXCLUSIVE,  p_vars.region));
+        launcher.add_region_requirement(RegionRequirement(c2_vars.patches_int, 0, READ_ONLY,     EXCLUSIVE, c2_vars.region));
         launcher.add_region_requirement(RegionRequirement(c1_vars.patches_int, 0, WRITE_DISCARD, EXCLUSIVE, c1_vars.region));
-        launcher.region_requirements[0].add_fields(field_id_c_vars);
-        launcher.region_requirements[1].add_fields(field_id_p_vars);
+        launcher.region_requirements[0].add_fields(field_id_p_vars);
+        launcher.region_requirements[1].add_fields(field_id_c_vars);
+        launcher.region_requirements[2].add_fields(field_id_c_vars);
         rt->execute_index_space(ctx, launcher);
     }
 
@@ -829,7 +865,6 @@ void launchSSPRK3(IndexSpace& color_isp_int, IndexSpace& color_isp_ghost_x, Inde
         launcher.region_requirements[1].add_fields(field_id_c_vars);
         rt->execute_index_space(ctx, launcher);
     }
-
 }
 
 

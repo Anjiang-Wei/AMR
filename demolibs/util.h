@@ -7,6 +7,7 @@
 typedef double Real;
 typedef unsigned long long uint_t;
 typedef long long int int_t;
+typedef unsigned int uint;
 
 struct BaseGridConfig {
     const uint_t PATCH_SIZE;
