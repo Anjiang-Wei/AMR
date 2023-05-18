@@ -65,7 +65,7 @@ void taskTopLevel(const Task* task, const std::vector<PhysicalRegion>& rgns, Con
         8,   // PATCH_SIZE
         4,   // NUM_PATCHES_X
         4,   // NUM_PATCHES_Y
-        5,   // STENCIL_WIDTH
+        7,   // STENCIL_WIDTH consider advective fluxes and diffusive fluxes
         1.0, // LX
         1.0, // LY
     };
@@ -132,6 +132,7 @@ void taskTopLevel(const Task* task, const std::vector<PhysicalRegion>& rgns, Con
         rt->execute_index_space(ctx, launcher);
         printf("Done!\n");
     }
+    writeFieldsToH5("./mesh", {"/x", "/y"}, {0, 1}, coords, grid_config, ctx, rt);
 
     // Set initial condition
     { // Launch taskSetInitialCondition
@@ -382,7 +383,7 @@ void taskCalcRHS(const Task* task, const std::vector<PhysicalRegion>& rgns, Cont
 
     auto args = reinterpret_cast<ArgsCalcRHS*>(task->args);
     const int STAGE_ID_NOW = args->stage_id_now;
-    const int STENCIL_SIZE = args->stencil_size;
+    const int STENCIL_SIZE = 5; // HARD CODE FOR 5-PT STENCIL
     const Real          Rg = args->R_gas;
     const Real         gam = args->gamma;
     const Real      mu_ref = args->mu_ref;

@@ -6,6 +6,7 @@
 #include "util.h"
 #include "num_kernels.h"
 #include "physical_models.h"
+#include "hdf5_hook.h"
 #include <vector>
 
 //constexpr int STENCIL_SIZE = 5;

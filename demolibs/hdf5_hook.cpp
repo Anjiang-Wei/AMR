@@ -1,19 +1,45 @@
 
 #include "hdf5_hook.h"
+#include <stdexcept>
 
 
-void writeFieldsToH5(const std::string filename, const std::vector<std::string> fnames, const std::vector<uint> fids, RegionOfFields rgn, BaseGridConfig g_config) {
+void writeFieldsToH5(const std::string filename, const std::vector<std::string> fnames, const std::vector<uint> fids, RegionOfFields rgn, BaseGridConfig g_config, Context ctx, Runtime* rt) {
+
+    if (fnames.size() != fids.size()) throw std::runtime_error("The size of field names does not match the size of field IDs.");
+
+    const hsize_t DIM_X = g_config.STENCIL_WIDTH - 1 + g_config.PATCH_SIZE * g_config.NUM_PATCHES_X;
+    const hsize_t DIM_Y = g_config.STENCIL_WIDTH - 1 + g_config.PATCH_SIZE * g_config.NUM_PATCHES_Y;
+
     hid_t file_id = H5Fcreate((filename + ".h5").c_str(), H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
-    hsize_t dims[2] = {g_config.PATCH_SIZE * g_config.NUM_PATCHES_X, g_config.PATCH_SIZE * g_config.NUM_PATCHES_Y};
+    hsize_t dims[2] = {DIM_X, DIM_Y};
     hid_t dataspace_id = H5Screate_simple(2, dims, NULL);
 
     const int num_fields = fnames.size();
     for (int i = 0; i < num_fields; i++) {
-        hid_t dset_id = H5Dcreate2(file_id, ("/"+fnames[i]).c_str(), H5T_IEEE_F64LE, dataspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+        hid_t dset_id = H5Dcreate2(file_id, fnames[i].c_str(), H5T_IEEE_F64LE, dataspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
         H5Dclose(dset_id);
     }
     H5Sclose(dataspace_id);
     H5Fclose(file_id);
+
+    std::map<uint, const char*> field_map;
+    for (size_t i = 0; i < fids.size(); i++) field_map.insert({fids[i], fnames[i].c_str()});
+
+    LogicalRegion h5_lr = rt->create_logical_region(ctx, rgn.region.get_index_space(), rgn.region.get_field_space());
+    AttachLauncher att_launcher(LEGION_EXTERNAL_HDF5_FILE, h5_lr, h5_lr);
+    att_launcher.attach_hdf5((filename + ".h5").c_str(), field_map, LEGION_FILE_READ_WRITE);
+    PhysicalRegion h5_pr = rt->attach_external_resource(ctx, att_launcher);
+
+    CopyLauncher cp_launcher;
+    cp_launcher.add_copy_requirements(
+        RegionRequirement(rgn.region,     READ_ONLY, EXCLUSIVE, rgn.region),
+        RegionRequirement(     h5_lr, WRITE_DISCARD, EXCLUSIVE,      h5_lr)
+    );
+    cp_launcher.src_requirements[0].add_fields(fids);
+    cp_launcher.dst_requirements[0].add_fields(fids);
+    rt->issue_copy_operation(ctx, cp_launcher);
+
+    rt->detach_external_resource(ctx, h5_pr);
 
 }
 
