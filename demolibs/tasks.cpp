@@ -56,6 +56,22 @@ void registerAllTasks() {
 
 
 
+void debugDump(char* filename, RegionOfFields rgn, Context ctx, Runtime* rt) {
+    BaseGridConfig grid_config = {
+        PATCH_SIZE,      // PATCH_SIZE
+        NUM_PATCHES_X,   // NUM_PATCHES_X
+        NUM_PATCHES_Y,   // NUM_PATCHES_Y
+        7,   // STENCIL_WIDTH consider advective fluxes and diffusive fluxes
+        1.0, // LX
+        1.0  // LY
+    };
+    writeFieldsToH5(filename,
+            {"/density", "/u", "/v", "/T"},
+            {PVARS_ID::DENSITY, PVARS_ID::VEL_X, PVARS_ID::VEL_Y, PVARS_ID::TEMP},
+            rgn, grid_config, ctx, rt);
+}
+
+
 /*!
  * Root task.
  */
@@ -72,7 +88,7 @@ void taskTopLevel(const Task* task, const std::vector<PhysicalRegion>& rgns, Con
         NUM_PATCHES_Y,   // NUM_PATCHES_Y
         7,   // STENCIL_WIDTH consider advective fluxes and diffusive fluxes
         1.0, // LX
-        1.0, // LY
+        1.0  // LY
     };
 
     ArgsSolve args_solve;
@@ -723,22 +739,6 @@ void launchSSPRK3(IndexSpace& color_isp_int, IndexSpace& color_isp_ghost_x, Inde
         rt->execute_index_space(ctx, launcher);
     }
 
-    /////////////// DEBUG BEGIN //////////////////
-    {
-        BaseGridConfig grid_config = {
-            PATCH_SIZE,      // PATCH_SIZE
-            NUM_PATCHES_X,   // NUM_PATCHES_X
-            NUM_PATCHES_Y,   // NUM_PATCHES_Y
-            7,   // STENCIL_WIDTH consider advective fluxes and diffusive fluxes
-            1.0, // LX
-            1.0, // LY
-        };
-        writeFieldsToH5("debug_before_fill_ghost",
-                {"/density", "/u", "/v", "/T"},
-                {PVARS_ID::DENSITY, PVARS_ID::VEL_X, PVARS_ID::VEL_Y, PVARS_ID::TEMP},
-                p_vars, grid_config, ctx, rt);
-    }
-    ///////////// DEBUG END ////////////////////
 
     {// Fill up ghost points for periodic domain in p_vars
         IndexCopyLauncher launcher_x(color_isp_ghost_x);
@@ -772,23 +772,6 @@ void launchSSPRK3(IndexSpace& color_isp_int, IndexSpace& color_isp_ghost_x, Inde
         rt->issue_copy_operation(ctx, launcher_y);
     }
 
-    /////////////// DEBUG BEGIN //////////////////
-    {
-        BaseGridConfig grid_config = {
-            PATCH_SIZE,      // PATCH_SIZE
-            NUM_PATCHES_X,   // NUM_PATCHES_X
-            NUM_PATCHES_Y,   // NUM_PATCHES_Y
-            7,   // STENCIL_WIDTH consider advective fluxes and diffusive fluxes
-            1.0, // LX
-            1.0, // LY
-        };
-        writeFieldsToH5("debug_after_fill_ghost",
-                {"/density", "/u", "/v", "/T"},
-                {PVARS_ID::DENSITY, PVARS_ID::VEL_X, PVARS_ID::VEL_Y, PVARS_ID::TEMP},
-                p_vars, grid_config, ctx, rt);
-    }
-    ///////////// DEBUG END ////////////////////
-
     { // Launch calcRHS and write solutions to c1_vars
         IndexLauncher launcher (
                 TASK_ID::CALC_RHS,
@@ -818,6 +801,7 @@ void launchSSPRK3(IndexSpace& color_isp_int, IndexSpace& color_isp_ghost_x, Inde
         launcher.region_requirements[1].add_fields(field_id_p_vars);
         rt->execute_index_space(ctx, launcher);
     }
+
 
     {// Fill up ghost points for periodic domain in p_vars
         IndexCopyLauncher launcher_x(color_isp_ghost_x);
@@ -881,6 +865,7 @@ void launchSSPRK3(IndexSpace& color_isp_int, IndexSpace& color_isp_ghost_x, Inde
         rt->execute_index_space(ctx, launcher);
     }
 
+    debugDump("debug1", c2_vars, ctx, rt);
     { // Launch taskConvertConservativeToPrimitive
         IndexLauncher launcher (
                 TASK_ID::CVARS_TO_PVARS,
@@ -894,6 +879,7 @@ void launchSSPRK3(IndexSpace& color_isp_int, IndexSpace& color_isp_ghost_x, Inde
         launcher.region_requirements[1].add_fields(field_id_p_vars);
         rt->execute_index_space(ctx, launcher);
     }
+    debugDump("debug2", p_vars, ctx, rt);
 
     {// Fill up ghost points for periodic domain in p_vars
         IndexCopyLauncher launcher_x(color_isp_ghost_x);
