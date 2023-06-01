@@ -5,6 +5,10 @@
 #include <string>
 
 
+constexpr int PATCH_SIZE = 32;
+constexpr int NUM_PATCHES_X = 1;
+constexpr int NUM_PATCHES_Y = 1;
+
 void registerAllTasks() {
     Legion::Runtime::set_top_level_task_id(static_cast<int>(TASK_ID::TOP_LEVEL));
 
@@ -63,9 +67,9 @@ void taskTopLevel(const Task* task, const std::vector<PhysicalRegion>& rgns, Con
 
     /********************************************************************************/
     BaseGridConfig grid_config = {
-        32,   // PATCH_SIZE
-        8,   // NUM_PATCHES_X
-        8,   // NUM_PATCHES_Y
+        PATCH_SIZE,      // PATCH_SIZE
+        NUM_PATCHES_X,   // NUM_PATCHES_X
+        NUM_PATCHES_Y,   // NUM_PATCHES_Y
         7,   // STENCIL_WIDTH consider advective fluxes and diffusive fluxes
         1.0, // LX
         1.0, // LY
@@ -178,6 +182,7 @@ void taskTopLevel(const Task* task, const std::vector<PhysicalRegion>& rgns, Con
         rt->execute_index_space(ctx, launcher);
         printf("Done!\n");
     }
+
 
     unsigned long int output_count = 0;
     char output_count_str[64];
@@ -721,9 +726,9 @@ void launchSSPRK3(IndexSpace& color_isp_int, IndexSpace& color_isp_ghost_x, Inde
     /////////////// DEBUG BEGIN //////////////////
     {
         BaseGridConfig grid_config = {
-            32,  // PATCH_SIZE
-            8,   // NUM_PATCHES_X
-            8,   // NUM_PATCHES_Y
+            PATCH_SIZE,      // PATCH_SIZE
+            NUM_PATCHES_X,   // NUM_PATCHES_X
+            NUM_PATCHES_Y,   // NUM_PATCHES_Y
             7,   // STENCIL_WIDTH consider advective fluxes and diffusive fluxes
             1.0, // LX
             1.0, // LY
@@ -749,6 +754,7 @@ void launchSSPRK3(IndexSpace& color_isp_int, IndexSpace& color_isp_ghost_x, Inde
         launcher_x.dst_requirements[0].add_fields(field_id_p_vars);
         launcher_x.src_requirements[1].add_fields(field_id_p_vars);
         launcher_x.dst_requirements[1].add_fields(field_id_p_vars);
+        rt->issue_copy_operation(ctx, launcher_x);
 
         IndexCopyLauncher launcher_y(color_isp_ghost_y);
         launcher_y.add_copy_requirements(
@@ -763,14 +769,15 @@ void launchSSPRK3(IndexSpace& color_isp_int, IndexSpace& color_isp_ghost_x, Inde
         launcher_y.dst_requirements[0].add_fields(field_id_p_vars);
         launcher_y.src_requirements[1].add_fields(field_id_p_vars);
         launcher_y.dst_requirements[1].add_fields(field_id_p_vars);
+        rt->issue_copy_operation(ctx, launcher_y);
     }
 
     /////////////// DEBUG BEGIN //////////////////
     {
         BaseGridConfig grid_config = {
-            32,  // PATCH_SIZE
-            8,   // NUM_PATCHES_X
-            8,   // NUM_PATCHES_Y
+            PATCH_SIZE,      // PATCH_SIZE
+            NUM_PATCHES_X,   // NUM_PATCHES_X
+            NUM_PATCHES_Y,   // NUM_PATCHES_Y
             7,   // STENCIL_WIDTH consider advective fluxes and diffusive fluxes
             1.0, // LX
             1.0, // LY
@@ -826,6 +833,7 @@ void launchSSPRK3(IndexSpace& color_isp_int, IndexSpace& color_isp_ghost_x, Inde
         launcher_x.dst_requirements[0].add_fields(field_id_p_vars);
         launcher_x.src_requirements[1].add_fields(field_id_p_vars);
         launcher_x.dst_requirements[1].add_fields(field_id_p_vars);
+        rt->issue_copy_operation(ctx, launcher_x);
 
         IndexCopyLauncher launcher_y(color_isp_ghost_y);
         launcher_y.add_copy_requirements(
@@ -840,6 +848,7 @@ void launchSSPRK3(IndexSpace& color_isp_int, IndexSpace& color_isp_ghost_x, Inde
         launcher_y.dst_requirements[0].add_fields(field_id_p_vars);
         launcher_y.src_requirements[1].add_fields(field_id_p_vars);
         launcher_y.dst_requirements[1].add_fields(field_id_p_vars);
+        rt->issue_copy_operation(ctx, launcher_y);
     }
 
     { // Launch calcRHS and write solutions to c2_vars
@@ -900,6 +909,7 @@ void launchSSPRK3(IndexSpace& color_isp_int, IndexSpace& color_isp_ghost_x, Inde
         launcher_x.dst_requirements[0].add_fields(field_id_p_vars);
         launcher_x.src_requirements[1].add_fields(field_id_p_vars);
         launcher_x.dst_requirements[1].add_fields(field_id_p_vars);
+        rt->issue_copy_operation(ctx, launcher_x);
 
         IndexCopyLauncher launcher_y(color_isp_ghost_y);
         launcher_y.add_copy_requirements(
@@ -914,6 +924,7 @@ void launchSSPRK3(IndexSpace& color_isp_int, IndexSpace& color_isp_ghost_x, Inde
         launcher_y.dst_requirements[0].add_fields(field_id_p_vars);
         launcher_y.src_requirements[1].add_fields(field_id_p_vars);
         launcher_y.dst_requirements[1].add_fields(field_id_p_vars);
+        rt->issue_copy_operation(ctx, launcher_y);
     }
 
     { // Launch calcRHS and write solutions to c1_vars
