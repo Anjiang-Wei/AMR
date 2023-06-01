@@ -77,10 +77,15 @@ struct ArgsCalcRHS {
 struct ArgsSolve {
     Real R_gas;
     Real gamma;
+    Real mu_ref;
+    Real  T_ref;
+    Real visc_exp;
+    Real Pr;
     Real dt;
     Real dx;
     Real dy;
     uint_t num_iter;
+    uint_t output_freq;
     int stencil_size;
 };
 

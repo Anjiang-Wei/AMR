@@ -2,6 +2,7 @@
 #include "tasks.h"
 #include <cmath>
 #include <cstdio>
+#include <string>
 
 
 void registerAllTasks() {
@@ -62,9 +63,9 @@ void taskTopLevel(const Task* task, const std::vector<PhysicalRegion>& rgns, Con
 
     /********************************************************************************/
     BaseGridConfig grid_config = {
-        8,   // PATCH_SIZE
-        4,   // NUM_PATCHES_X
-        4,   // NUM_PATCHES_Y
+        32,   // PATCH_SIZE
+        8,   // NUM_PATCHES_X
+        8,   // NUM_PATCHES_Y
         7,   // STENCIL_WIDTH consider advective fluxes and diffusive fluxes
         1.0, // LX
         1.0, // LY
@@ -73,13 +74,21 @@ void taskTopLevel(const Task* task, const std::vector<PhysicalRegion>& rgns, Con
     ArgsSolve args_solve;
     args_solve.R_gas        = 1.0;
     args_solve.gamma        = 1.4;
-    args_solve.dt           = 1e-3;
+    args_solve.mu_ref       = 1e-5;
+    args_solve.visc_exp     = 0.76;
+    args_solve.T_ref        = 1.0;
+    args_solve.dt           = 1e-5;
     args_solve.dx           = 1.0 / (grid_config.PATCH_SIZE * grid_config.NUM_PATCHES_X);
     args_solve.dy           = 1.0 / (grid_config.PATCH_SIZE * grid_config.NUM_PATCHES_Y);
     args_solve.stencil_size = grid_config.STENCIL_WIDTH;
-    args_solve.num_iter     = 1;
+    args_solve.num_iter     = 10;
+    args_solve.output_freq  = 1;
+    std::string output_prefix = "./";
     /********************************************************************************/
 
+    ArgsConvertConservativeToPrimitive args_c2p;
+    args_c2p.R_gas = args_solve.R_gas;
+    args_c2p.gamma = args_solve.gamma;
 
     RegionOfFields coords;  // coordinates
     RegionOfFields c0_vars; // conservative variables
@@ -132,7 +141,7 @@ void taskTopLevel(const Task* task, const std::vector<PhysicalRegion>& rgns, Con
         rt->execute_index_space(ctx, launcher);
         printf("Done!\n");
     }
-    writeFieldsToH5("./mesh", {"/x", "/y"}, {0, 1}, coords, grid_config, ctx, rt);
+    writeFieldsToH5((output_prefix+"mesh").c_str(), {"/x", "/y"}, {0, 1}, coords, grid_config, ctx, rt);
 
     // Set initial condition
     { // Launch taskSetInitialCondition
@@ -170,12 +179,44 @@ void taskTopLevel(const Task* task, const std::vector<PhysicalRegion>& rgns, Con
         printf("Done!\n");
     }
 
+    unsigned long int output_count = 0;
+    char output_count_str[64];
+    sprintf(output_count_str, "%06lu", output_count);
+    std::string output_filename = output_prefix + "output_" + output_count_str;
+    printf("Write output to \"%s.h5\".\n", output_filename.c_str());
+    writeFieldsToH5(output_filename,
+            {"/density", "/u", "/v", "/T"},
+            {PVARS_ID::DENSITY, PVARS_ID::VEL_X, PVARS_ID::VEL_Y, PVARS_ID::TEMP},
+            p_vars, grid_config, ctx, rt);
+    output_count++;
+
     printf("Starting time iterations:\n");
     for (int it = 0; it < args_solve.num_iter; it++) {
         launchSSPRK3(color_isp_int, color_isp_ghost_x, color_isp_ghost_y, c0_vars, c1_vars, c2_vars, p_vars, args_solve, ctx, rt);
         printf("  -- Iteration %04d done!\n", it);
-    }
+        if (((it+1) % args_solve.output_freq) == 0) {
+            IndexLauncher launcher (
+                    TASK_ID::CVARS_TO_PVARS,
+                    color_isp_int,
+                    TaskArgument(&args_c2p, sizeof(ArgsConvertConservativeToPrimitive)),
+                    ArgumentMap()
+            );
+            launcher.add_region_requirement(RegionRequirement(c0_vars.patches_int, 0, READ_ONLY,     EXCLUSIVE, c0_vars.region));
+            launcher.add_region_requirement(RegionRequirement( p_vars.patches_int, 0, WRITE_DISCARD, EXCLUSIVE,  p_vars.region));
+            launcher.region_requirements[0].add_fields(field_id_c_vars);
+            launcher.region_requirements[1].add_fields(field_id_p_vars);
+            rt->execute_index_space(ctx, launcher);
 
+            sprintf(output_count_str, "%06lu", output_count);
+            std::string output_filename = output_prefix + "output_" + output_count_str;
+            printf("Write output to \"%s.h5\".\n", output_filename.c_str());
+            writeFieldsToH5(output_filename,
+                    {"/density", "/u", "/v", "/T"},
+                    {PVARS_ID::DENSITY, PVARS_ID::VEL_X, PVARS_ID::VEL_Y, PVARS_ID::TEMP},
+                    p_vars, grid_config, ctx, rt);
+            output_count++;
+        }
+    }
 }
 
 
@@ -250,7 +291,7 @@ void taskSetInitialCondition(const Task* task, const std::vector<PhysicalRegion>
         rho[ij] = 1.0;
         u  [ij] = 0.0;
         v  [ij] = 0.0;
-        T  [ij] = 1.0;
+        T  [ij] = 2.0;
     }
 }
 
@@ -419,7 +460,7 @@ void taskCalcRHS(const Task* task, const std::vector<PhysicalRegion>& rgns, Cont
         Point2D ij   = *pir;
 
         Real flx_mass[EDGE_STENCIL_SIZE], flx_mmtx[EDGE_STENCIL_SIZE], flx_mmty[EDGE_STENCIL_SIZE], flx_enrg[EDGE_STENCIL_SIZE];
-        Real rho, u, v, w, T, p, h, dudx, dudy, dvdx, dvdy, gradT;
+        Real rho, u, v, T, p, h, dudx, dudy, dvdx, dvdy, gradT;
         Real du_coll[EDGE_STENCIL_SIZE], dv_coll[EDGE_STENCIL_SIZE];
 
         /*** Step 1 assemble fluxes in x-staggered ***/

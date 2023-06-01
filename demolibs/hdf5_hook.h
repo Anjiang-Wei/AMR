@@ -12,6 +12,7 @@ enum class HDF5_COPY_ID {
     FID_CP,
 };
 
+void writeFieldsToH5(char*, const std::vector<std::string>, const std::vector<uint>, RegionOfFields, BaseGridConfig, Context, Runtime*);
 void writeFieldsToH5(const std::string, const std::vector<std::string>, const std::vector<uint>, RegionOfFields, BaseGridConfig, Context, Runtime*);
 
 bool generate_hdf_file(const char*, const char*, int);
