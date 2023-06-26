@@ -21,7 +21,7 @@ struct CVARS_ID {
 
 struct  PVARS_ID {
     enum {
-        VEL_X, VEL_Y, DENSITY, TEMP,
+        DENSITY, VEL_X, VEL_Y, TEMP,
         SIZE
     };
 };
@@ -41,6 +41,7 @@ struct TASK_ID {
         CALC_RHS,
         SSPRK3_LINCOMB_1,
         SSPRK3_LINCOMB_2,
+        COPY_PVARS,
         SIZE
     };
 };
@@ -89,6 +90,8 @@ struct ArgsSolve {
     int stencil_size;
 };
 
+struct ArgsCopyPrimVars { int offset_x; int offset_y; };
+
 
 void registerAllTasks();
 void taskTopLevel                      (const Task*, const std::vector<PhysicalRegion>&, Context, Runtime*);
@@ -99,7 +102,10 @@ void taskConvertConservativeToPrimitive(const Task*, const std::vector<PhysicalR
 void taskCalcRHS                       (const Task*, const std::vector<PhysicalRegion>&, Context, Runtime*);
 void taskSSPRK3LinearCombination1      (const Task*, const std::vector<PhysicalRegion>&, Context, Runtime*);
 void taskSSPRK3LinearCombination2      (const Task*, const std::vector<PhysicalRegion>&, Context, Runtime*);
-void launchSSPRK3(IndexSpace&, IndexSpace&, IndexSpace&, RegionOfFields&, RegionOfFields&, RegionOfFields&, RegionOfFields&, ArgsSolve&, Context, Runtime*); 
+void taskCopyPrimVars                  (const Task*, const std::vector<PhysicalRegion>&, Context, Runtime*);
+void fillGhosts(const IndexSpace&, const IndexSpace&, RegionOfFields&, std::vector<unsigned int>, Context, Runtime*);
+void launchSSPRK3(IndexSpace&, IndexSpace&, IndexSpace&, RegionOfFields&, RegionOfFields&, RegionOfFields&, RegionOfFields&, const ArgsSolve&, const BaseGridConfig&,  Context, Runtime*); 
+void fillGhostsNew(RegionOfFields&, const BaseGridConfig&, const IndexSpace&, const IndexSpace&, Context, Runtime*);
 
 
 #endif

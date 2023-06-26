@@ -52,6 +52,11 @@ void registerAllTasks() {
         registrar.add_constraint(Legion::ProcessorConstraint(Legion::Processor::LOC_PROC));
         Legion::Runtime::preregister_task_variant<taskSSPRK3LinearCombination2>(registrar, "SSPRK3 linear combination 2");
     }
+    {
+        Legion::TaskVariantRegistrar registrar(static_cast<int>(TASK_ID::COPY_PVARS), "Copy primitive variables");
+        registrar.add_constraint(Legion::ProcessorConstraint(Legion::Processor::LOC_PROC));
+        Legion::Runtime::preregister_task_variant<taskCopyPrimVars>(registrar, "Copy primitive variables");
+    }
 }
 
 
@@ -213,7 +218,7 @@ void taskTopLevel(const Task* task, const std::vector<PhysicalRegion>& rgns, Con
 
     printf("Starting time iterations:\n");
     for (int it = 0; it < args_solve.num_iter; it++) {
-        launchSSPRK3(color_isp_int, color_isp_ghost_x, color_isp_ghost_y, c0_vars, c1_vars, c2_vars, p_vars, args_solve, ctx, rt);
+        launchSSPRK3(color_isp_int, color_isp_ghost_x, color_isp_ghost_y, c0_vars, c1_vars, c2_vars, p_vars, args_solve, grid_config, ctx, rt);
         printf("  -- Iteration %04d done!\n", it);
         if (((it+1) % args_solve.output_freq) == 0) {
             IndexLauncher launcher (
@@ -685,6 +690,57 @@ void taskSSPRK3LinearCombination2(const Task* task, const std::vector<PhysicalRe
 }
 
 
+void fillGhosts(const IndexSpace& color_isp_ghost_x, const IndexSpace& color_isp_ghost_y, RegionOfFields& rgn, std::vector<unsigned int> fids, Context ctx, Runtime* rt) {
+   Box2D csp_domain_x = rt->get_index_space_domain(ctx, color_isp_ghost_x); 
+   for (PointInBox2D color_it(csp_domain_x); color_it(); color_it++) {
+        LogicalRegion lg_src_1 = rt->get_logical_subregion_by_color(ctx, rgn.patches_ghost_mirror_x_hi, DomainPoint(*color_it));
+        LogicalRegion lg_src_2 = rt->get_logical_subregion_by_color(ctx, rgn.patches_ghost_mirror_x_lo, DomainPoint(*color_it));
+        LogicalRegion lg_dst_1 = rt->get_logical_subregion_by_color(ctx, rgn.patches_ghost_x_lo       , DomainPoint(*color_it));
+        LogicalRegion lg_dst_2 = rt->get_logical_subregion_by_color(ctx, rgn.patches_ghost_x_hi       , DomainPoint(*color_it));
+        CopyLauncher cp_launcher;
+        cp_launcher.add_copy_requirements(
+            RegionRequirement(lg_src_1,     READ_ONLY, EXCLUSIVE, rgn.region),
+            RegionRequirement(lg_dst_1, WRITE_DISCARD, EXCLUSIVE, rgn.region)
+        );
+        cp_launcher.add_copy_requirements(
+            RegionRequirement(lg_src_2,     READ_ONLY, EXCLUSIVE, rgn.region),
+            RegionRequirement(lg_dst_2, WRITE_DISCARD, EXCLUSIVE, rgn.region)
+        );
+        cp_launcher.src_requirements[0].add_fields(fids);
+        cp_launcher.dst_requirements[0].add_fields(fids);
+        cp_launcher.src_requirements[1].add_fields(fids);
+        cp_launcher.dst_requirements[1].add_fields(fids);
+        rt->issue_copy_operation(ctx, cp_launcher);
+        
+        Box2D dom_src_1 = rt->get_index_space_domain(lg_src_1.get_index_space());
+        Box2D dom_src_2 = rt->get_index_space_domain(lg_src_2.get_index_space());
+        Box2D dom_dst_1 = rt->get_index_space_domain(lg_dst_1.get_index_space());
+        Box2D dom_dst_2 = rt->get_index_space_domain(lg_dst_2.get_index_space());
+   }
+
+   Box2D csp_domain_y = rt->get_index_space_domain(ctx, color_isp_ghost_y); 
+   for (PointInBox2D color_it(csp_domain_y); color_it(); color_it++) {
+        LogicalRegion lg_src_1 = rt->get_logical_subregion_by_color(ctx, rgn.patches_ghost_mirror_y_hi, DomainPoint(*color_it));
+        LogicalRegion lg_src_2 = rt->get_logical_subregion_by_color(ctx, rgn.patches_ghost_mirror_y_lo, DomainPoint(*color_it));
+        LogicalRegion lg_dst_1 = rt->get_logical_subregion_by_color(ctx, rgn.patches_ghost_y_lo       , DomainPoint(*color_it));
+        LogicalRegion lg_dst_2 = rt->get_logical_subregion_by_color(ctx, rgn.patches_ghost_y_hi       , DomainPoint(*color_it));
+        CopyLauncher cp_launcher;
+        cp_launcher.add_copy_requirements(
+            RegionRequirement(lg_src_1,     READ_ONLY, EXCLUSIVE, rgn.region),
+            RegionRequirement(lg_dst_1, WRITE_DISCARD, EXCLUSIVE, rgn.region)
+        );
+        cp_launcher.add_copy_requirements(
+            RegionRequirement(lg_src_2,     READ_ONLY, EXCLUSIVE, rgn.region),
+            RegionRequirement(lg_dst_2, WRITE_DISCARD, EXCLUSIVE, rgn.region)
+        );
+        cp_launcher.src_requirements[0].add_fields(fids);
+        cp_launcher.dst_requirements[0].add_fields(fids);
+        cp_launcher.src_requirements[1].add_fields(fids);
+        cp_launcher.dst_requirements[1].add_fields(fids);
+        rt->issue_copy_operation(ctx, cp_launcher);
+   }
+}
+
 
 /*
  * Function of launchers to conduct SSPRK3
@@ -697,7 +753,7 @@ void taskSSPRK3LinearCombination2(const Task* task, const std::vector<PhysicalRe
  */
 void launchSSPRK3(IndexSpace& color_isp_int, IndexSpace& color_isp_ghost_x, IndexSpace& color_isp_ghost_y,
         RegionOfFields& c0_vars, RegionOfFields& c1_vars, RegionOfFields& c2_vars, RegionOfFields& p_vars,
-        ArgsSolve& args, Context ctx, Runtime* rt)
+        const ArgsSolve& args, const BaseGridConfig& grid_config, Context ctx, Runtime* rt)
 {
      
     /***************
@@ -722,8 +778,8 @@ void launchSSPRK3(IndexSpace& color_isp_int, IndexSpace& color_isp_ghost_x, Inde
     args_c2p.R_gas = args.R_gas;
     args_c2p.gamma = args.gamma;
 
-    const std::vector<unsigned int> field_id_c_vars {0, 1, 2, 3};
-    const std::vector<unsigned int> field_id_p_vars {0, 1, 2, 3};
+    const std::vector<unsigned int> field_id_c_vars {CVARS_ID::MASS,    CVARS_ID::MMTX,  CVARS_ID::MMTY,  CVARS_ID::ENRG};
+    const std::vector<unsigned int> field_id_p_vars {PVARS_ID::DENSITY, PVARS_ID::VEL_X, PVARS_ID::VEL_Y, PVARS_ID::TEMP};
 
     { // Launch taskConvertConservativeToPrimitive
         IndexLauncher launcher (
@@ -739,39 +795,9 @@ void launchSSPRK3(IndexSpace& color_isp_int, IndexSpace& color_isp_ghost_x, Inde
         rt->execute_index_space(ctx, launcher);
     }
 
-
-    {// Fill up ghost points for periodic domain in p_vars
-        IndexCopyLauncher launcher_x(color_isp_ghost_x);
-        launcher_x.add_copy_requirements(
-                RegionRequirement(p_vars.patches_ghost_mirror_x_hi, 0, READ_ONLY,     EXCLUSIVE, p_vars.region),
-                RegionRequirement(p_vars.patches_ghost_x_lo,        0, WRITE_DISCARD, EXCLUSIVE, p_vars.region)
-        );
-        launcher_x.add_copy_requirements(
-                RegionRequirement(p_vars.patches_ghost_mirror_x_lo, 0, READ_ONLY,     EXCLUSIVE, p_vars.region),
-                RegionRequirement(p_vars.patches_ghost_x_hi,        0, WRITE_DISCARD, EXCLUSIVE, p_vars.region)
-        );
-        launcher_x.src_requirements[0].add_fields(field_id_p_vars);
-        launcher_x.dst_requirements[0].add_fields(field_id_p_vars);
-        launcher_x.src_requirements[1].add_fields(field_id_p_vars);
-        launcher_x.dst_requirements[1].add_fields(field_id_p_vars);
-        rt->issue_copy_operation(ctx, launcher_x);
-
-        IndexCopyLauncher launcher_y(color_isp_ghost_y);
-        launcher_y.add_copy_requirements(
-                RegionRequirement(p_vars.patches_ghost_mirror_y_hi, 0, READ_ONLY,     EXCLUSIVE, p_vars.region),
-                RegionRequirement(p_vars.patches_ghost_y_lo,        0, WRITE_DISCARD, EXCLUSIVE, p_vars.region)
-        );
-        launcher_y.add_copy_requirements(
-                RegionRequirement(p_vars.patches_ghost_mirror_y_lo, 0, READ_ONLY,     EXCLUSIVE, p_vars.region),
-                RegionRequirement(p_vars.patches_ghost_y_hi,        0, WRITE_DISCARD, EXCLUSIVE, p_vars.region)
-        );
-        launcher_y.src_requirements[0].add_fields(field_id_p_vars);
-        launcher_y.dst_requirements[0].add_fields(field_id_p_vars);
-        launcher_y.src_requirements[1].add_fields(field_id_p_vars);
-        launcher_y.dst_requirements[1].add_fields(field_id_p_vars);
-        rt->issue_copy_operation(ctx, launcher_y);
-    }
-
+    debugDump("debug0",  p_vars, ctx, rt);
+    fillGhostsNew(p_vars, grid_config, color_isp_ghost_x, color_isp_ghost_y, ctx, rt);
+    debugDump("debug1",  p_vars, ctx, rt);
     { // Launch calcRHS and write solutions to c1_vars
         IndexLauncher launcher (
                 TASK_ID::CALC_RHS,
@@ -803,38 +829,8 @@ void launchSSPRK3(IndexSpace& color_isp_int, IndexSpace& color_isp_ghost_x, Inde
     }
 
 
-    {// Fill up ghost points for periodic domain in p_vars
-        IndexCopyLauncher launcher_x(color_isp_ghost_x);
-        launcher_x.add_copy_requirements(
-                RegionRequirement(p_vars.patches_ghost_mirror_x_hi, 0, READ_ONLY,     EXCLUSIVE, p_vars.region),
-                RegionRequirement(p_vars.patches_ghost_x_lo,        0, WRITE_DISCARD, EXCLUSIVE, p_vars.region)
-        );
-        launcher_x.add_copy_requirements(
-                RegionRequirement(p_vars.patches_ghost_mirror_x_lo, 0, READ_ONLY,     EXCLUSIVE, p_vars.region),
-                RegionRequirement(p_vars.patches_ghost_x_hi,        0, WRITE_DISCARD, EXCLUSIVE, p_vars.region)
-        );
-        launcher_x.src_requirements[0].add_fields(field_id_p_vars);
-        launcher_x.dst_requirements[0].add_fields(field_id_p_vars);
-        launcher_x.src_requirements[1].add_fields(field_id_p_vars);
-        launcher_x.dst_requirements[1].add_fields(field_id_p_vars);
-        rt->issue_copy_operation(ctx, launcher_x);
 
-        IndexCopyLauncher launcher_y(color_isp_ghost_y);
-        launcher_y.add_copy_requirements(
-                RegionRequirement(p_vars.patches_ghost_mirror_y_hi, 0, READ_ONLY,     EXCLUSIVE, p_vars.region),
-                RegionRequirement(p_vars.patches_ghost_y_lo,        0, WRITE_DISCARD, EXCLUSIVE, p_vars.region)
-        );
-        launcher_y.add_copy_requirements(
-                RegionRequirement(p_vars.patches_ghost_mirror_y_lo, 0, READ_ONLY,     EXCLUSIVE, p_vars.region),
-                RegionRequirement(p_vars.patches_ghost_y_hi,        0, WRITE_DISCARD, EXCLUSIVE, p_vars.region)
-        );
-        launcher_y.src_requirements[0].add_fields(field_id_p_vars);
-        launcher_y.dst_requirements[0].add_fields(field_id_p_vars);
-        launcher_y.src_requirements[1].add_fields(field_id_p_vars);
-        launcher_y.dst_requirements[1].add_fields(field_id_p_vars);
-        rt->issue_copy_operation(ctx, launcher_y);
-    }
-
+    fillGhostsNew(p_vars, grid_config, color_isp_ghost_x, color_isp_ghost_y, ctx, rt);
     { // Launch calcRHS and write solutions to c2_vars
         IndexLauncher launcher (
                 TASK_ID::CALC_RHS,
@@ -865,7 +861,6 @@ void launchSSPRK3(IndexSpace& color_isp_int, IndexSpace& color_isp_ghost_x, Inde
         rt->execute_index_space(ctx, launcher);
     }
 
-    debugDump("debug1", c2_vars, ctx, rt);
     { // Launch taskConvertConservativeToPrimitive
         IndexLauncher launcher (
                 TASK_ID::CVARS_TO_PVARS,
@@ -879,40 +874,8 @@ void launchSSPRK3(IndexSpace& color_isp_int, IndexSpace& color_isp_ghost_x, Inde
         launcher.region_requirements[1].add_fields(field_id_p_vars);
         rt->execute_index_space(ctx, launcher);
     }
-    debugDump("debug2", p_vars, ctx, rt);
 
-    {// Fill up ghost points for periodic domain in p_vars
-        IndexCopyLauncher launcher_x(color_isp_ghost_x);
-        launcher_x.add_copy_requirements(
-                RegionRequirement(p_vars.patches_ghost_mirror_x_hi, 0, READ_ONLY,     EXCLUSIVE, p_vars.region),
-                RegionRequirement(p_vars.patches_ghost_x_lo,        0, WRITE_DISCARD, EXCLUSIVE, p_vars.region)
-        );
-        launcher_x.add_copy_requirements(
-                RegionRequirement(p_vars.patches_ghost_mirror_x_lo, 0, READ_ONLY,     EXCLUSIVE, p_vars.region),
-                RegionRequirement(p_vars.patches_ghost_x_hi,        0, WRITE_DISCARD, EXCLUSIVE, p_vars.region)
-        );
-        launcher_x.src_requirements[0].add_fields(field_id_p_vars);
-        launcher_x.dst_requirements[0].add_fields(field_id_p_vars);
-        launcher_x.src_requirements[1].add_fields(field_id_p_vars);
-        launcher_x.dst_requirements[1].add_fields(field_id_p_vars);
-        rt->issue_copy_operation(ctx, launcher_x);
-
-        IndexCopyLauncher launcher_y(color_isp_ghost_y);
-        launcher_y.add_copy_requirements(
-                RegionRequirement(p_vars.patches_ghost_mirror_y_hi, 0, READ_ONLY,     EXCLUSIVE, p_vars.region),
-                RegionRequirement(p_vars.patches_ghost_y_lo,        0, WRITE_DISCARD, EXCLUSIVE, p_vars.region)
-        );
-        launcher_y.add_copy_requirements(
-                RegionRequirement(p_vars.patches_ghost_mirror_y_lo, 0, READ_ONLY,     EXCLUSIVE, p_vars.region),
-                RegionRequirement(p_vars.patches_ghost_y_hi,        0, WRITE_DISCARD, EXCLUSIVE, p_vars.region)
-        );
-        launcher_y.src_requirements[0].add_fields(field_id_p_vars);
-        launcher_y.dst_requirements[0].add_fields(field_id_p_vars);
-        launcher_y.src_requirements[1].add_fields(field_id_p_vars);
-        launcher_y.dst_requirements[1].add_fields(field_id_p_vars);
-        rt->issue_copy_operation(ctx, launcher_y);
-    }
-
+    fillGhostsNew(p_vars, grid_config, color_isp_ghost_x, color_isp_ghost_y, ctx, rt);
     { // Launch calcRHS and write solutions to c1_vars
         IndexLauncher launcher (
                 TASK_ID::CALC_RHS,
@@ -946,3 +909,113 @@ void launchSSPRK3(IndexSpace& color_isp_int, IndexSpace& color_isp_ghost_x, Inde
 
 
 
+/*!
+ * Calculate the right-hand sides of evolution equations
+ *
+ * Fields:
+ * [ro][0] PVARS::DENSITY
+ * [ro][0] PVARS::VEL_X
+ * [ro][0] PVARS::VEL_Y
+ * [ro][0] PVARS::TEMP
+ * [rw][1] PVARS::DENSITY
+ * [rw][1] PVARS::VEL_X
+ * [rw][1] PVARS::VEL_Y
+ * [rw][1] PVARS::TEMP
+ * Note region[0] and region[1] are actually disjoint!
+ *
+ * Args: ArgsCopyPrimVars
+ */
+void taskCopyPrimVars(const Task* task, const std::vector<PhysicalRegion>& rgns, Context ctx, Runtime* rt) {
+    const PhysicalRegion& rgn_src = rgns[0];
+    const PhysicalRegion& rgn_dst = rgns[1];
+
+    auto args = reinterpret_cast<ArgsCopyPrimVars*>(task->args);
+    const Point2D offset(args->offset_x, args->offset_y);
+
+    const FieldAccessor<READ_ONLY,     Real, 2> r1(rgn_src, PVARS_ID::DENSITY);
+    const FieldAccessor<READ_ONLY,     Real, 2> u1(rgn_src, PVARS_ID::VEL_X  );
+    const FieldAccessor<READ_ONLY,     Real, 2> v1(rgn_src, PVARS_ID::VEL_Y  );
+    const FieldAccessor<READ_ONLY,     Real, 2> T1(rgn_src, PVARS_ID::TEMP   );
+
+    const FieldAccessor<WRITE_DISCARD, Real, 2> r2(rgn_dst, PVARS_ID::DENSITY);
+    const FieldAccessor<WRITE_DISCARD, Real, 2> u2(rgn_dst, PVARS_ID::VEL_X  );
+    const FieldAccessor<WRITE_DISCARD, Real, 2> v2(rgn_dst, PVARS_ID::VEL_Y  );
+    const FieldAccessor<WRITE_DISCARD, Real, 2> T2(rgn_dst, PVARS_ID::TEMP   );
+
+    Box2D isp_domain = rt->get_index_space_domain(ctx, task->regions[0].region.get_index_space());
+    for (PointInBox2D pir(isp_domain); pir(); pir++) {
+        Point2D ij_src = *pir;
+        Point2D ij_dst = ij_src + offset;
+        r2[ij_dst] = r1[ij_src];
+        u2[ij_dst] = u1[ij_src];
+        v2[ij_dst] = v1[ij_src];
+        T2[ij_dst] = T1[ij_src];
+    }
+}
+
+
+
+void fillGhostsNew(RegionOfFields& p_vars, const BaseGridConfig& grid_config,
+        const IndexSpace& color_isp_ghost_x, const IndexSpace& color_isp_ghost_y, Context ctx, Runtime* rt)
+{
+    const int Nx = grid_config.PATCH_SIZE * NUM_PATCHES_X;
+    const int Ny = grid_config.PATCH_SIZE * NUM_PATCHES_Y;
+    const std::vector<unsigned int> pvars_fid = {PVARS_ID::DENSITY, PVARS_ID::VEL_X, PVARS_ID::VEL_Y, PVARS_ID::TEMP};
+
+    {
+        ArgsCopyPrimVars args { Nx, 0};
+        IndexLauncher launcher (
+            TASK_ID::COPY_PVARS,
+            color_isp_ghost_x,
+            TaskArgument(&args, sizeof(ArgsCopyPrimVars)),
+            ArgumentMap()
+        ); 
+        launcher.add_region_requirement(RegionRequirement( p_vars.patches_ghost_mirror_x_lo, 0, READ_ONLY,     EXCLUSIVE, p_vars.region));
+        launcher.add_region_requirement(RegionRequirement( p_vars.patches_ghost_x_hi,        0, WRITE_DISCARD, EXCLUSIVE, p_vars.region));
+        launcher.region_requirements[0].add_fields(pvars_fid);
+        launcher.region_requirements[1].add_fields(pvars_fid);
+        rt->execute_index_space(ctx, launcher);
+    }
+    {
+        ArgsCopyPrimVars args {-Nx, 0};
+        IndexLauncher launcher (
+            TASK_ID::COPY_PVARS,
+            color_isp_ghost_x,
+            TaskArgument(&args, sizeof(ArgsCopyPrimVars)),
+            ArgumentMap()
+        ); 
+        launcher.add_region_requirement(RegionRequirement( p_vars.patches_ghost_mirror_x_hi, 0, READ_ONLY,     EXCLUSIVE, p_vars.region));
+        launcher.add_region_requirement(RegionRequirement( p_vars.patches_ghost_x_lo,        0, WRITE_DISCARD, EXCLUSIVE, p_vars.region));
+        launcher.region_requirements[0].add_fields(pvars_fid);
+        launcher.region_requirements[1].add_fields(pvars_fid);
+        rt->execute_index_space(ctx, launcher);
+    }
+    {
+        ArgsCopyPrimVars args { 0, Ny};
+        IndexLauncher launcher (
+            TASK_ID::COPY_PVARS,
+            color_isp_ghost_y,
+            TaskArgument(&args, sizeof(ArgsCopyPrimVars)),
+            ArgumentMap()
+        ); 
+        launcher.add_region_requirement(RegionRequirement( p_vars.patches_ghost_mirror_y_lo, 0, READ_ONLY,     EXCLUSIVE, p_vars.region));
+        launcher.add_region_requirement(RegionRequirement( p_vars.patches_ghost_y_hi,        0, WRITE_DISCARD, EXCLUSIVE, p_vars.region));
+        launcher.region_requirements[0].add_fields(pvars_fid);
+        launcher.region_requirements[1].add_fields(pvars_fid);
+        rt->execute_index_space(ctx, launcher);
+    }
+    {
+        ArgsCopyPrimVars args { 0,-Ny};
+        IndexLauncher launcher (
+            TASK_ID::COPY_PVARS,
+            color_isp_ghost_y,
+            TaskArgument(&args, sizeof(ArgsCopyPrimVars)),
+            ArgumentMap()
+        ); 
+        launcher.add_region_requirement(RegionRequirement( p_vars.patches_ghost_mirror_y_hi, 0, READ_ONLY,     EXCLUSIVE, p_vars.region));
+        launcher.add_region_requirement(RegionRequirement( p_vars.patches_ghost_y_lo,        0, WRITE_DISCARD, EXCLUSIVE, p_vars.region));
+        launcher.region_requirements[0].add_fields(pvars_fid);
+        launcher.region_requirements[1].add_fields(pvars_fid);
+        rt->execute_index_space(ctx, launcher);
+    }
+}
