@@ -16,8 +16,16 @@ grid.full_patch_size = grid.patch_size + 2 * grid.num_ghosts -- patch size inclu
 grid.idx_min         = -grid.num_ghosts                      -- starting index of the patch index space in each dimension including ghost region
 grid.idx_max         = grid.patch_size - 1 + grid.num_ghosts -- last index of the patch index space in each dimension including ghost region
 
-struct grid_meta {
-    pid     : int, -- patch id
+
+
+fspace grid_fsp {
+    x            : double,
+    y            : double,
+    refine_flag  : bool,
+}
+
+
+fspace grid_meta_fsp {
     level   : int, -- level of grid
     i_coord : int, -- patch coordinate in i-dimension
     j_coord : int, -- patch coordinate in j-dimension
@@ -33,20 +41,6 @@ struct grid_meta {
 }
 
 
-
-fspace grid_fsp {
-    x            : double,
-    y            : double,
-    refine_flag  : bool,
-}
-
-
-fspace grid_meta_fsp {
-    connectivity : grid_meta
-}
-
-
-__demand (__inline)
 task grid.createPartitionOfMetaPatches (
     meta_patches : region(ispace(int1d), grid_meta_fsp)
 )
@@ -57,12 +51,13 @@ task grid.createPartitionOfMetaPatches (
     for color = 0, int(num_colors) do
         c.legion_domain_point_coloring_color_domain(coloring, int1d(color):to_domain_point(), c.legion_domain_from_rect_1d( c.legion_rect_1d_t{lo = int1d(color):to_point(), hi = int1d(color):to_point()}  ))
     end
-
+    var p = partition(disjoint, complete, meta_patches, coloring, csp)
+    c.legion_domain_point_coloring_destroy(coloring)
+    return p
 end
 
 
 
-__demand (__inline)
 task grid.createPartitionOfFullPatches (
     patches : region(ispace(int3d), grid_fsp) 
 )
@@ -84,7 +79,6 @@ end
 
 
 
-__demand (__inline)
 task grid.createPartitionOfInteriorPatches (
     patches : region(ispace(int3d), grid_fsp) 
 )
@@ -99,14 +93,13 @@ task grid.createPartitionOfInteriorPatches (
         var int_patch_bounds    = c.legion_rect_3d_t {lo = int_patch_bounds_lo:to_point(), hi = int_patch_bounds_hi:to_point()}
         c.legion_domain_point_coloring_color_domain(coloring, int1d(color):to_domain_point(), c.legion_domain_from_rect_3d(int_patch_bounds))
     end
-    var p = partition(disjoint, complete, patches, coloring, csp)
+    var p = partition(disjoint, patches, coloring, csp)
     c.legion_domain_point_coloring_destroy(coloring)
     return p
 end
 
 
 
-__demand (__inline)
 task grid.createPartitionOfIPrevSendBuffers (
     patches : region(ispace(int3d), grid_fsp) 
 )
@@ -121,14 +114,13 @@ task grid.createPartitionOfIPrevSendBuffers (
         var ghost_bounds    = c.legion_rect_3d_t {lo = ghost_bounds_lo:to_point(), hi = ghost_bounds_hi:to_point()}
         c.legion_domain_point_coloring_color_domain(coloring, int1d(color):to_domain_point(), c.legion_domain_from_rect_3d(ghost_bounds))
     end
-    var p = partition(disjoint, complete, patches, coloring, csp)
+    var p = partition(disjoint, patches, coloring, csp)
     c.legion_domain_point_coloring_destroy(coloring)
     return p
 end
 
 
 
-__demand (__inline)
 task grid.createPartitionOfINextSendBuffers (
     patches : region(ispace(int3d), grid_fsp) 
 )
@@ -143,14 +135,13 @@ task grid.createPartitionOfINextSendBuffers (
         var ghost_bounds    = c.legion_rect_3d_t {lo = ghost_bounds_lo:to_point(), hi = ghost_bounds_hi:to_point()}
         c.legion_domain_point_coloring_color_domain(coloring, int1d(color):to_domain_point(), c.legion_domain_from_rect_3d(ghost_bounds))
     end
-    var p = partition(disjoint, complete, patches, coloring, csp)
+    var p = partition(disjoint, patches, coloring, csp)
     c.legion_domain_point_coloring_destroy(coloring)
     return p
 end
 
 
 
-__demand (__inline)
 task grid.createPartitionOfIPrevRecvBuffers (
     patches : region(ispace(int3d), grid_fsp) 
 )
@@ -165,14 +156,13 @@ task grid.createPartitionOfIPrevRecvBuffers (
         var ghost_bounds    = c.legion_rect_3d_t {lo = ghost_bounds_lo:to_point(), hi = ghost_bounds_hi:to_point()}
         c.legion_domain_point_coloring_color_domain(coloring, int1d(color):to_domain_point(), c.legion_domain_from_rect_3d(ghost_bounds))
     end
-    var p = partition(disjoint, complete, patches, coloring, csp)
+    var p = partition(disjoint, patches, coloring, csp)
     c.legion_domain_point_coloring_destroy(coloring)
     return p
 end
 
 
 
-__demand (__inline)
 task grid.createPartitionOfINextRecvBuffers (
     patches : region(ispace(int3d), grid_fsp) 
 )
@@ -187,14 +177,13 @@ task grid.createPartitionOfINextRecvBuffers (
         var ghost_bounds    = c.legion_rect_3d_t {lo = ghost_bounds_lo:to_point(), hi = ghost_bounds_hi:to_point()}
         c.legion_domain_point_coloring_color_domain(coloring, int1d(color):to_domain_point(), c.legion_domain_from_rect_3d(ghost_bounds))
     end
-    var p = partition(disjoint, complete, patches, coloring, csp)
+    var p = partition(disjoint, patches, coloring, csp)
     c.legion_domain_point_coloring_destroy(coloring)
     return p
 end
 
 
 
-__demand (__inline)
 task grid.createPartitionOfJPrevSendBuffers (
     patches : region(ispace(int3d), grid_fsp) 
 )
@@ -209,14 +198,13 @@ task grid.createPartitionOfJPrevSendBuffers (
         var ghost_bounds    = c.legion_rect_3d_t {lo = ghost_bounds_lo:to_point(), hi = ghost_bounds_hi:to_point()}
         c.legion_domain_point_coloring_color_domain(coloring, int1d(color):to_domain_point(), c.legion_domain_from_rect_3d(ghost_bounds))
     end
-    var p = partition(disjoint, complete, patches, coloring, csp)
+    var p = partition(disjoint, patches, coloring, csp)
     c.legion_domain_point_coloring_destroy(coloring)
     return p
 end
 
 
 
-__demand (__inline)
 task grid.createPartitionOfJNextSendBuffers (
     patches : region(ispace(int3d), grid_fsp) 
 )
@@ -231,14 +219,13 @@ task grid.createPartitionOfJNextSendBuffers (
         var ghost_bounds    = c.legion_rect_3d_t {lo = ghost_bounds_lo:to_point(), hi = ghost_bounds_hi:to_point()}
         c.legion_domain_point_coloring_color_domain(coloring, int1d(color):to_domain_point(), c.legion_domain_from_rect_3d(ghost_bounds))
     end
-    var p = partition(disjoint, complete, patches, coloring, csp)
+    var p = partition(disjoint, patches, coloring, csp)
     c.legion_domain_point_coloring_destroy(coloring)
     return p
 end
 
 
 
-__demand (__inline)
 task grid.createPartitionOfJPrevRecvBuffers (
     patches : region(ispace(int3d), grid_fsp) 
 )
@@ -253,14 +240,13 @@ task grid.createPartitionOfJPrevRecvBuffers (
         var ghost_bounds    = c.legion_rect_3d_t {lo = ghost_bounds_lo:to_point(), hi = ghost_bounds_hi:to_point()}
         c.legion_domain_point_coloring_color_domain(coloring, int1d(color):to_domain_point(), c.legion_domain_from_rect_3d(ghost_bounds))
     end
-    var p = partition(disjoint, complete, patches, coloring, csp)
+    var p = partition(disjoint, patches, coloring, csp)
     c.legion_domain_point_coloring_destroy(coloring)
     return p
 end
 
 
 
-__demand (__inline)
 task grid.createPartitionOfJNextRecvBuffers (
     patches : region(ispace(int3d), grid_fsp) 
 )
@@ -275,11 +261,55 @@ task grid.createPartitionOfJNextRecvBuffers (
         var ghost_bounds    = c.legion_rect_3d_t {lo = ghost_bounds_lo:to_point(), hi = ghost_bounds_hi:to_point()}
         c.legion_domain_point_coloring_color_domain(coloring, int1d(color):to_domain_point(), c.legion_domain_from_rect_3d(ghost_bounds))
     end
-    var p = partition(disjoint, complete, patches, coloring, csp)
+    var p = partition(disjoint, patches, coloring, csp)
     c.legion_domain_point_coloring_destroy(coloring)
     return p
 end
 
 
+
+terra grid.baseCoordToPid(i_coord : int, j_coord : int) : int
+    if (i_coord < grid.num_base_patches_i and j_coord < grid.num_base_patches_j) then
+        return i_coord * grid.num_base_patches_j + j_coord
+    end
+    return -1
+end
+
+
+
+task grid.baseMetaGridInit(
+    meta_patches : region(ispace(int1d), grid_meta_fsp)
+)
+where
+    writes(meta_patches.{level, i_coord, j_coord, i_next, j_next, i_prev, j_prev, parent, child1, child2, child3, child4})
+do
+    var num_base_patches : int = grid.num_base_patches_i * grid.num_base_patches_j
+    for pid in meta_patches.ispace do
+        if (int(pid) < num_base_patches) then
+            var my_i_coord : int = int(pid) / grid.num_base_patches_j
+            var my_j_coord : int = int(pid) % grid.num_base_patches_j
+            meta_patches[pid].level   = 0
+            meta_patches[pid].i_coord = my_i_coord
+            meta_patches[pid].j_coord = my_j_coord
+            meta_patches[pid].i_prev  = grid.baseCoordToPid(int(my_i_coord - 1 + grid.num_base_patches_i) % grid.num_base_patches_i, my_j_coord)
+            meta_patches[pid].i_next  = grid.baseCoordToPid(int(my_i_coord + 1                          ) % grid.num_base_patches_i, my_j_coord)
+            meta_patches[pid].j_prev  = grid.baseCoordToPid(my_i_coord, int(my_j_coord - 1 + grid.num_base_patches_j) % grid.num_base_patches_j)
+            meta_patches[pid].j_next  = grid.baseCoordToPid(my_i_coord, int(my_j_coord + 1                          ) % grid.num_base_patches_j)
+        else
+            meta_patches[pid].level   = -1
+            meta_patches[pid].i_coord = -1
+            meta_patches[pid].j_coord = -1
+            meta_patches[pid].i_prev  = -1
+            meta_patches[pid].i_next  = -1
+            meta_patches[pid].j_prev  = -1
+            meta_patches[pid].j_next  = -1
+        end
+        meta_patches[pid].parent = -1
+        meta_patches[pid].child1 = -1
+        meta_patches[pid].child2 = -1
+        meta_patches[pid].child3 = -1
+        meta_patches[pid].child4 = -1
+    end
+end
 
 return grid
