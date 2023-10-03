@@ -30,10 +30,16 @@ task main()
     var part_patches_grid_j_prev_recv = grid.createPartitionOfJPrevRecvBuffers(patches_grid)
     var part_patches_grid_j_next_recv = grid.createPartitionOfJNextRecvBuffers(patches_grid)
 
+    fill(patches_meta.{level, i_coord, j_coord, i_next, j_next, i_prev, j_prev, parent, child1, child2, child3, child4}, -1)
+
     __demand(__index_launch)
     for color in color_space do
         grid.baseMetaGridInit(part_patches_meta[color])
     end
+
+    -- var isp_bounds_recv = part_patches_grid_i_prev_recv[int1d(0)].ispace.bounds
+    -- var isp_bounds_send = part_patches_grid_i_next_send[int1d(0)].ispace.bounds
+    -- c.printf("recv_buf = [(%d, %d) -- (%d, %d)]; send_buf = [(%d, %d) -- (%d, %d)]\n", isp_bounds_recv.lo.y, isp_bounds_recv.lo.z, isp_bounds_recv.hi.y, isp_bounds_recv.hi.z, isp_bounds_send.lo.y, isp_bounds_send.lo.z, isp_bounds_send.hi.y, isp_bounds_send.hi.z);
     
     
 end

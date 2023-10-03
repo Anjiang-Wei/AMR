@@ -281,7 +281,7 @@ task grid.baseMetaGridInit(
     meta_patches : region(ispace(int1d), grid_meta_fsp)
 )
 where
-    writes(meta_patches.{level, i_coord, j_coord, i_next, j_next, i_prev, j_prev, parent, child1, child2, child3, child4})
+    writes (meta_patches.{level, i_coord, j_coord, i_next, j_next, i_prev, j_prev, parent, child1, child2, child3, child4})
 do
     var num_base_patches : int = grid.num_base_patches_i * grid.num_base_patches_j
     for pid in meta_patches.ispace do
@@ -295,21 +295,12 @@ do
             meta_patches[pid].i_next  = grid.baseCoordToPid(int(my_i_coord + 1                          ) % grid.num_base_patches_i, my_j_coord)
             meta_patches[pid].j_prev  = grid.baseCoordToPid(my_i_coord, int(my_j_coord - 1 + grid.num_base_patches_j) % grid.num_base_patches_j)
             meta_patches[pid].j_next  = grid.baseCoordToPid(my_i_coord, int(my_j_coord + 1                          ) % grid.num_base_patches_j)
-        else
-            meta_patches[pid].level   = -1
-            meta_patches[pid].i_coord = -1
-            meta_patches[pid].j_coord = -1
-            meta_patches[pid].i_prev  = -1
-            meta_patches[pid].i_next  = -1
-            meta_patches[pid].j_prev  = -1
-            meta_patches[pid].j_next  = -1
         end
-        meta_patches[pid].parent = -1
-        meta_patches[pid].child1 = -1
-        meta_patches[pid].child2 = -1
-        meta_patches[pid].child3 = -1
-        meta_patches[pid].child4 = -1
     end
 end
+
+
+
+
 
 return grid
