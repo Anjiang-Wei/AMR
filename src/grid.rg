@@ -423,7 +423,8 @@ end
 -- src : source region
 -- Note: This function call assumes dst and src has the same size of index-space and they are disjoint (sub-) regions
 function grid.deepCopy(fsp)
-    task grid.deepCopyTask(
+    local __demand(__inline)
+    task deepCopyTask(
         dst : region(ispace(int3d), fsp),
         src : region(ispace(int3d), fsp)
     )
@@ -435,8 +436,96 @@ function grid.deepCopy(fsp)
             dst[cij] = src[cij+offset]
         end
     end
-    return grid.deepCopyTask
+    return deepCopyTask
 end
 
+
+
+-- Get i_prev of one meta-patch
+-- meta_patch is a sub-region of meta_patches
+task grid.getIPrev(meta_patch : region(ispace(int1d), grid_meta_fsp))
+where
+    reads(meta_patch.i_prev)
+do
+    regentlib.assert(meta_patch.ispace.bounds.hi == meta_patch.ispace.bounds.lo, "Sub-region with only one patch must be passed to the task.")
+    var pid : int1d = meta_patch.ispace.bounds.lo
+    var i_prev : int = int(meta_patch[pid].i_prev)
+    return i_prev
+end
+
+
+function grid.fillGhosts(part_patches_meta, part_patches_grid, fsp)
+    return rexpr var color_space = [grid.createColorSpace()] end -- rexpr
+end
+
+
+---- Fill ghosts points (recv buffers) for all fields in one region
+---- Communication may occur
+--function grid.fillGhosts(part_patches_meta, part_patches_grid, fsp)
+--    local __demand(__inline) -- require index launch
+--    task taskGetMetaDataIPrev(
+--        meta_patches : region(ispace(int1d), grid_meta_fsp)
+--    )
+--    where
+--        reads(meta_patches.i_prev)
+--    do
+--        regentlib.assert(meta_patches.ispace.bounds.hi == meta_patches.ispace.bounds.lo)
+--        var pid : int1d = meta_patches.ispace.bounds.lo
+--        var i_prev : int = int(meta_patches[pid].i_prev)
+--        return i_prev
+--    end
+--
+--    color_space = grid.createColorSpace()
+--
+--    __demand(__index_launch)
+--    for pid in color_space do
+--        var i_prev : int = taskGetMetaDataIPrev(part_patches_meta[pid])
+--        if (i_prev > 0) then
+--            [grid.deepCopy(fsp)](part_patches_grid[pid], part_patches_grid[i_prev])
+--        end
+--    end
+
+    --local __demand(__inline) -- require index launch
+    --task taskGetMetaDataJPrev(
+    --    meta_patches : region(ispace(int1d), grid_meta_fsp)
+    --)
+    --where
+    --    reads(meta_patches.j_prev)
+    --do
+    --    regentlib.assert(meta_patches.ispace.bounds.hi == meta_patches.ispace.bounds.lo)
+    --    var pid : int1d = meta_patches.ispace.bounds.lo
+    --    var j_prev : int = int(meta_patches[pid].j_prev)
+    --    return j_prev
+    --end
+
+    --local __demand(__inline) -- require index launch
+    --task taskGetMetaDataINext(
+    --    meta_patches : region(ispace(int1d), grid_meta_fsp)
+    --)
+    --where
+    --    reads(meta_patches.i_next)
+    --do
+    --    regentlib.assert(meta_patches.ispace.bounds.hi == meta_patches.ispace.bounds.lo)
+    --    var pid : int1d = meta_patches.ispace.bounds.lo
+    --    var i_next : int = int(meta_patches[pid].i_next)
+    --    return i_next
+    --end
+
+    --local __demand(__inline) -- require index launch
+    --task taskGetMetaDataJNext(
+    --    meta_patches : region(ispace(int1d), grid_meta_fsp)
+    --)
+    --where
+    --    reads(meta_patches.j_next)
+    --do
+    --    regentlib.assert(meta_patches.ispace.bounds.hi == meta_patches.ispace.bounds.lo)
+    --    var pid : int1d = meta_patches.ispace.bounds.lo
+    --    var j_next : int = int(meta_patches[pid].j_next)
+    --    return j_next
+    --end
+
+    --int1d color_space = [grid.createColorSpace()] -- ispace(int1d, grid.num_patches_max, 0)
+
+--end
 
 return grid
