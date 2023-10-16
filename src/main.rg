@@ -34,11 +34,13 @@ task main()
     var part_patches_grid_j_prev_recv = [grid.createPartitionOfJPrevRecvBuffers(grid_fsp)](patches_grid);
     var part_patches_grid_j_next_recv = [grid.createPartitionOfJNextRecvBuffers(grid_fsp)](patches_grid);
 
-    fill(patches_meta.{level, i_coord, j_coord, i_next, j_next, i_prev, j_prev, parent, child1, child2, child3, child4}, -1);
+    --fill(patches_meta.{level, i_coord, j_coord, i_next, j_next, i_prev, j_prev, parent, child1, child2, child3, child4}, -1);
+
+    grid.metaRefine(patches_meta, part_patches_meta)
 
     __demand(__index_launch)
     for color in color_space do
-        grid.baseMetaGridInit(part_patches_meta[color])
+        grid.metaGridInit(part_patches_meta[color])
     end
 
     var isp_bounds_recv = part_patches_grid_i_prev_recv[int1d(0)].ispace.bounds;

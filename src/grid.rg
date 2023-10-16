@@ -21,7 +21,6 @@ grid.idx_max         = grid.patch_size - 1 + grid.num_ghosts -- last index of th
 fspace grid_fsp {
     x            : double,
     y            : double,
-    refine_flag  : bool,
 }
 
 
@@ -34,10 +33,21 @@ fspace grid_meta_fsp {
     j_prev  : int, -- patch id of the neighboring patch ahead in j-dimension
     j_next  : int, -- patch id of the neighboring patch after in j-dimension
     parent  : int, -- patch id of the parent patch
-    child1  : int, -- patch id of the 1st child patch
-    child2  : int, -- patch id of the 2nd child patch
-    child3  : int, -- patch id of the 3rd child patch
-    child4  : int  -- patch id of the 4th child patch
+    child0  : int, -- patch id of the 1st child patch
+    child1  : int, -- patch id of the 2nd child patch
+    child2  : int, -- patch id of the 3rd child patch
+    child3  : int, -- patch id of the 4th child patch
+    --
+    -- ^ j
+    -- |
+    -- |-----------------|
+    -- | child2 | child3 |
+    -- |--------+--------|
+    -- | child0 | child1 |
+    -- |-----------------| --> i
+    --
+    refine_req  : bool,
+    coarsen_req : bool
 }
 
 
@@ -392,11 +402,11 @@ end
 
 
 -- Initialize the meta patches on base level
-task grid.baseMetaGridInit(
+task grid.metaGridInit(
     meta_patches : region(ispace(int1d), grid_meta_fsp)
 )
 where
-    writes (meta_patches.{level, i_coord, j_coord, i_next, j_next, i_prev, j_prev, parent, child1, child2, child3, child4})
+    writes (meta_patches)
 do
     var num_base_patches : int = grid.num_base_patches_i * grid.num_base_patches_j
     for pid in meta_patches.ispace do
@@ -410,7 +420,22 @@ do
             meta_patches[pid].i_next  = baseCoordToPid(int(my_i_coord + 1                          ) % grid.num_base_patches_i, my_j_coord)
             meta_patches[pid].j_prev  = baseCoordToPid(my_i_coord, int(my_j_coord - 1 + grid.num_base_patches_j) % grid.num_base_patches_j)
             meta_patches[pid].j_next  = baseCoordToPid(my_i_coord, int(my_j_coord + 1                          ) % grid.num_base_patches_j)
+        else
+            meta_patches[pid].level   = -1
+            meta_patches[pid].i_coord = -1
+            meta_patches[pid].j_coord = -1
+            meta_patches[pid].i_prev  = -1
+            meta_patches[pid].i_next  = -1
+            meta_patches[pid].j_prev  = -1
+            meta_patches[pid].j_next  = -1
         end
+        meta_patches[pid].parent = -1
+        meta_patches[pid].child0 = -1
+        meta_patches[pid].child1 = -1
+        meta_patches[pid].child2 = -1
+        meta_patches[pid].child3 = -1
+        meta_patches[pid].refine_req  = false
+        meta_patches[pid].coarsen_req = false
     end
 end
 
@@ -492,6 +517,73 @@ function grid.fillGhosts(fsp)
     end
 
     return taskFillGhosts
+end
+
+
+-- Helper task: return the first pid wtih continuous available segment of "length" patches
+local task getAvailableSegPatches(
+    meta_patches_region : region(ispace(int1d), grid_meta_fsp),
+    meta_patches        : partition(disjoint, complete, meta_patches_region, ispace(int1d)),
+    length              : int
+)
+where
+    reads (meta_patches_region.level)
+do
+    var offset     : int = grid.num_base_patches_i * grid.num_base_patches_j
+    var num_checks : int = grid.num_patches_max - offset - length
+    for pid in ispace(int1d, num_checks, offset) do
+        var valid : bool = true
+        for j = 0, length-1 do
+            var pid_next = pid + int1d(j)
+            valid = valid and (meta_patches[pid_next][pid_next].level > -1)
+        end
+        if (valid) then return pid end
+    end
+    regentlib.assert(false, "Cannot find any segment of available patches.")
+end
+
+
+
+-- Calculate refined pattern using meta-patches only
+task grid.metaRefine(
+    meta_patches_region : region(ispace(int1d), grid_meta_fsp),
+    meta_patches        : partition(disjoint, complete, meta_patches_region, ispace(int1d))
+)
+where
+    reads writes (meta_patches_region)
+do
+    
+    for pid in meta_patches.colors do
+        var patch = meta_patches[pid][pid];
+        if ((patch.level > -1) and (patch.child0 < 0) and patch.refine_req) then
+            -- TODO: get four available patches from the list as the four new children
+            var pid_child : int1d = getAvailableSegPatches(meta_patches_region, meta_patches, 4)
+            for child_loc = 0, 3 do
+                var pid_child_j : int1d = pid_child + child_loc
+                var child_patch = meta_patches[pid_child_j][pid_child_j]
+                child_patch.level = patch.level + 1
+                child_patch.parent = int(pid)
+                child_patch.i_coord = patch.i_coord * 2 + int(child_loc == 1) + int(child_loc == 3)
+                child_patch.j_coord = patch.j_coord * 2 + int(child_loc == 2) + int(child_loc == 3)
+
+                if (child_loc == 0 or child_loc == 2) then
+                    child_patch.i_next = int(pid_child_j) + 1
+                    -- TODO: child_patch.i_prev = ???
+                else
+                    child_patch.i_prev = int(pid_child_j) - 1
+                    -- TODO: child_patch.i_next = ???
+                end
+
+                if (child_loc == 0 or child_loc == 1) then
+                    child_patch.j_next = int(pid_child_j) + 1
+                    -- TODO: child_patch.j_prev = ???
+                else
+                    child_patch.j_prev = int(pid_child_j) - 1
+                    -- TODO: child_patch.j_next = ???
+                end
+            end
+        end -- if
+    end
 end
 
 
