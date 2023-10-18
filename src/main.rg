@@ -36,7 +36,10 @@ task main()
 
     --fill(patches_meta.{level, i_coord, j_coord, i_next, j_next, i_prev, j_prev, parent, child1, child2, child3, child4}, -1);
 
-    grid.metaRefine(patches_meta, part_patches_meta)
+    -- TODO: Randomly raise several refine flags on base-level patches
+    grid.metaRefine (patches_meta, part_patches_meta)
+    -- TODO: Set raise coarsen flags on all higher-level patches
+    grid.metaCoarsen(patches_meta, part_patches_meta)
 
     __demand(__index_launch)
     for color in color_space do

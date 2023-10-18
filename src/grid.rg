@@ -25,26 +25,23 @@ fspace grid_fsp {
 
 
 fspace grid_meta_fsp {
-    level   : int, -- level of grid
-    i_coord : int, -- patch coordinate in i-dimension
-    j_coord : int, -- patch coordinate in j-dimension
-    i_prev  : int, -- patch id of the neighboring patch ahead in i-dimension
-    i_next  : int, -- patch id of the neighboring patch after in i-dimension
-    j_prev  : int, -- patch id of the neighboring patch ahead in j-dimension
-    j_next  : int, -- patch id of the neighboring patch after in j-dimension
-    parent  : int, -- patch id of the parent patch
-    child0  : int, -- patch id of the 1st child patch
-    child1  : int, -- patch id of the 2nd child patch
-    child2  : int, -- patch id of the 3rd child patch
-    child3  : int, -- patch id of the 4th child patch
+    level   : int,    -- level of grid
+    i_coord : int,    -- patch coordinate in i-dimension
+    j_coord : int,    -- patch coordinate in j-dimension
+    i_prev  : int,    -- patch id of the neighboring patch ahead in i-dimension
+    i_next  : int,    -- patch id of the neighboring patch after in i-dimension
+    j_prev  : int,    -- patch id of the neighboring patch ahead in j-dimension
+    j_next  : int,    -- patch id of the neighboring patch after in j-dimension
+    parent  : int,    -- patch id of the parent patch
+    child   : int[4], -- patch id of all children patches
     --
     -- ^ j
     -- |
-    -- |-----------------|
-    -- | child2 | child3 |
-    -- |--------+--------|
-    -- | child0 | child1 |
-    -- |-----------------| --> i
+    -- |---------------------|
+    -- | child[2] | child[3] |
+    -- |----------+----------|
+    -- | child[0] | child[1] |
+    -- |---------------------| --> i
     --
     refine_req  : bool,
     coarsen_req : bool
@@ -429,11 +426,11 @@ do
             meta_patches[pid].j_prev  = -1
             meta_patches[pid].j_next  = -1
         end
-        meta_patches[pid].parent = -1
-        meta_patches[pid].child0 = -1
-        meta_patches[pid].child1 = -1
-        meta_patches[pid].child2 = -1
-        meta_patches[pid].child3 = -1
+        meta_patches[pid].parent      = -1
+        meta_patches[pid].child[0]    = -1
+        meta_patches[pid].child[1]    = -1
+        meta_patches[pid].child[2]    = -1
+        meta_patches[pid].child[3]    = -1
         meta_patches[pid].refine_req  = false
         meta_patches[pid].coarsen_req = false
     end
@@ -545,6 +542,15 @@ end
 
 
 -- Calculate refined pattern using meta-patches only
+--
+-- ^ j
+-- |
+-- |---------------------|
+-- | child[2] | child[3] |
+-- |----------+----------|
+-- | child[0] | child[1] |
+-- |---------------------| --> i
+--
 task grid.metaRefine(
     meta_patches_region : region(ispace(int1d), grid_meta_fsp),
     meta_patches        : partition(disjoint, complete, meta_patches_region, ispace(int1d))
@@ -552,39 +558,145 @@ task grid.metaRefine(
 where
     reads writes (meta_patches_region)
 do
-    
+
     for pid in meta_patches.colors do
-        var patch = meta_patches[pid][pid];
-        if ((patch.level > -1) and (patch.child0 < 0) and patch.refine_req) then
-            -- TODO: get four available patches from the list as the four new children
+        var parent_patch = meta_patches[pid][pid];
+        if ((parent_patch.level > -1) and (parent_patch.child[0] < 0) and parent_patch.refine_req) then
+            -- Get four available patches from the list as the four new children
             var pid_child : int1d = getAvailableSegPatches(meta_patches_region, meta_patches, 4)
             for child_loc = 0, 3 do
                 var pid_child_j : int1d = pid_child + child_loc
                 var child_patch = meta_patches[pid_child_j][pid_child_j]
-                child_patch.level = patch.level + 1
+                child_patch.level = parent_patch.level + 1
                 child_patch.parent = int(pid)
-                child_patch.i_coord = patch.i_coord * 2 + int(child_loc == 1) + int(child_loc == 3)
-                child_patch.j_coord = patch.j_coord * 2 + int(child_loc == 2) + int(child_loc == 3)
+                child_patch.i_coord = parent_patch.i_coord * 2 + int(child_loc == 1) + int(child_loc == 3)
+                child_patch.j_coord = parent_patch.j_coord * 2 + int(child_loc == 2) + int(child_loc == 3)
+            end -- for child_loc
+        end
+    end -- for pid
+
+    for pid in meta_patches.colors do
+        var parent_patch = meta_patches[pid][pid];
+        if ((parent_patch.level > -1) and (parent_patch.child[0] < 0) and parent_patch.refine_req) then
+            for child_loc = 0, 3 do
+                var pid_child_j : int1d = parent_patch.child[child_loc]
+                var child_patch = meta_patches[pid_child_j][pid_child_j]
 
                 if (child_loc == 0 or child_loc == 2) then
                     child_patch.i_next = int(pid_child_j) + 1
-                    -- TODO: child_patch.i_prev = ???
+                    if (parent_patch.i_prev > -1) then
+                        var parent_nbr = meta_patches[parent_patch.i_prev][parent_patch.i_prev]
+                        child_patch.i_prev = parent_nbr.child[child_loc + 1]
+                    else
+                        child_patch.i_prev = -1
+                    end
                 else
                     child_patch.i_prev = int(pid_child_j) - 1
-                    -- TODO: child_patch.i_next = ???
+                    if (parent_patch.i_next > -1) then
+                        var parent_nbr = meta_patches[parent_patch.i_next][parent_patch.i_next]
+                        child_patch.i_next = parent_nbr.child[child_loc - 1]
+                    else
+                        child_patch.i_next = -1
+                    end
                 end
 
                 if (child_loc == 0 or child_loc == 1) then
-                    child_patch.j_next = int(pid_child_j) + 1
-                    -- TODO: child_patch.j_prev = ???
+                    child_patch.j_next = int(pid_child_j) + 2
+                    if (parent_patch.j_prev > -1) then
+                        var parent_nbr = meta_patches[parent_patch.j_prev][parent_patch.j_prev]
+                        child_patch.j_prev = parent_nbr.child[child_loc + 2]
+                    else
+                        child_patch.j_prev = -1
+                    end
                 else
-                    child_patch.j_prev = int(pid_child_j) - 1
-                    -- TODO: child_patch.j_next = ???
+                    child_patch.j_prev = int(pid_child_j) - 2
+                    if (parent_patch.j_next > -1) then
+                        var parent_nbr = meta_patches[parent_patch.j_next][parent_patch.j_next]
+                        child_patch.j_next = parent_nbr.child[child_loc - 2]
+                    else
+                        child_patch.j_next = -1
+                    end
                 end
-            end
-        end -- if
+            end -- for child_loc
+        end
+    end -- for pid
+end
+
+
+-- Helper function to test if all children of a given patch are leaves and they all have coarsen requests
+-- Args:
+--  parent_patch : sub-region of meta patch
+--  meta_patches : partition of all meta patches
+local function _allChildrenAreCoarsenable(parent_patch, meta_patches)
+    return rexpr
+        (parent_patch.level > -1)                                                 and
+        (meta_patches[parent_patch.child[0]][parent_patch.child[0]].child[0] < 0) and
+        (meta_patches[parent_patch.child[1]][parent_patch.child[1]].child[0] < 0) and
+        (meta_patches[parent_patch.child[2]][parent_patch.child[2]].child[0] < 0) and
+        (meta_patches[parent_patch.child[3]][parent_patch.child[3]].child[0] < 0) and
+        (meta_patches[parent_patch.child[0]][parent_patch.child[0]].coarsen_req)  and
+        (meta_patches[parent_patch.child[1]][parent_patch.child[1]].coarsen_req)  and
+        (meta_patches[parent_patch.child[2]][parent_patch.child[2]].coarsen_req)  and
+        (meta_patches[parent_patch.child[3]][parent_patch.child[3]].coarsen_req)
     end
 end
 
+
+-- Helper function to reset a meta-patch used for deleting a meta-patch
+-- Args:
+--   child_patch : a child patch that can be safely deleted
+--  meta_patches : partition of all meta patches
+local function _resetMetaPatch(child_patch, meta_patches)
+    return rquote
+        var nbr_patch_i_prev = meta_patches[child_patch.i_prev][child_patch.i_prev]
+        var nbr_patch_i_next = meta_patches[child_patch.i_next][child_patch.i_next]
+        var nbr_patch_j_prev = meta_patches[child_patch.j_prev][child_patch.j_prev]
+        var nbr_patch_j_next = meta_patches[child_patch.j_next][child_patch.j_next]
+        child_patch.level       = -1;
+        child_patch.i_coord     = -1;
+        child_patch.j_coord     = -1;
+        child_patch.parent      = -1;
+        child_patch.refine_req  = false;
+        child_patch.coarsen_req = false;
+        child_patch.i_prev      = -1;
+        child_patch.j_prev      = -1;
+        child_patch.i_next      = -1;
+        child_patch.j_next      = -1;
+        nbr_patch_i_prev.i_next = -1;
+        nbr_patch_j_prev.j_next = -1;
+        nbr_patch_i_next.i_prev = -1;
+        nbr_patch_j_next.j_prev = -1;
+    end
+end
+
+
+-- Calculate coarsened pattern using meta-patches only
+--
+-- ^ j
+-- |
+-- |---------------------|
+-- | child[2] | child[3] |
+-- |----------+----------|
+-- | child[0] | child[1] |
+-- |---------------------| --> i
+--
+task grid.metaCoarsen(
+    meta_patches_region : region(ispace(int1d), grid_meta_fsp),
+    meta_patches        : partition(disjoint, complete, meta_patches_region, ispace(int1d))
+)
+where
+    reads writes (meta_patches_region)
+do
+    for pid in meta_patches.colors do
+        var parent_patch = meta_patches[pid][pid];
+        if ([_allChildrenAreCoarsenable(parent_patch, meta_patches)]) then
+            for child_loc = 0, 3 do
+                var child_patch = meta_patches[parent_patch.child[child_loc]][parent_patch.child[child_loc]];
+                [_resetMetaPatch(child_patch, meta_patches)]
+                parent_patch.child[child_loc] = -1
+            end -- for child_loc
+        end
+    end -- for pid
+end
 
 return grid
