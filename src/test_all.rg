@@ -1,0 +1,123 @@
+import "regent"
+local c      = regentlib.c
+local stdlib = terralib.includec("stdlib.h")
+local string = terralib.includec("string.h")
+local format = require("std/format")
+local grid   = require("grid")
+require("fields")
+
+fspace my_fsp {
+    var1 : double,
+    var2 : double,
+}
+
+
+
+-- This task writes meta-patch info of all active meta-patches
+function writeActiveMeta(fname)
+    local __demand(__inline) task taskWriteActiveMeta(
+        meta_patches_region : region(ispace(int1d), grid_meta_fsp),
+        meta_patches        : partition(disjoint, complete, meta_patches_region, ispace(int1d))
+    )
+    where
+        reads (meta_patches_region)
+    do
+        var file = c.fopen(fname, "w")
+        c.fprintf(file, "%7s, %7s, %7s, %7s, %7s, %7s, %7s, %7s, %7s, %7s, %7s, %7s, %7s\n",
+                    "pid", "level", "i_coord", "j_coord", "i_prev", "i_next", "j_prev", "j_next", "parent", "child0", "child1", "child2", "child3");
+        for pid in meta_patches.colors do
+            var patch = meta_patches[pid][pid]
+            if (patch.level > -1) then
+                c.fprintf(file, "%7d, %7d, %7d, %7d, %7d, %7d, %7d, %7d, %7d, %7d, %7d, %7d, %7d\n",
+                    int(pid), patch.level, patch.i_coord, patch.j_coord,
+                    patch.i_prev, patch.i_next, patch.j_prev, patch.j_next,
+                    patch.parent, patch.child[0], patch.child[1], patch.child[2], patch.child[3]);
+            end
+        end -- for pid
+        c.fclose(file)
+    end -- task
+    return taskWriteActiveMeta
+end
+
+
+task main()
+    var output_path = "./build"
+
+    c.printf("Solver initialization:")
+    c.printf("  -- Patch size (interior) : %d x %d\n", grid.patch_size, grid.patch_size)
+    c.printf("  -- Ghost points on each side in each dimension: %d\n", grid.num_ghosts)
+    c.printf("  -- Base level patches: %d x %d\n", grid.num_base_patches_i, grid.num_base_patches_j)
+    c.printf("  -- Maximum level of refinement: %d\n", grid.level_max)
+    c.printf("  -- Maximum possible allocated patches: %d\n", grid.num_patches_max)
+    
+    var color_space  = [grid.createColorSpace()]; -- ispace(int1d, grid.num_patches_max, 0)
+    var patches_grid = [grid.createDataRegion(grid_fsp)]; -- region(ispace(int3d, {grid.num_patches_max, grid.full_patch_size, grid.full_patch_size}, {0, grid.idx_min, grid.idx_min}), grid_fsp)
+    var patches_meta = [grid.createMetaRegion()]; -- region(ispace(int1d, grid.num_patches_max, 0), grid_meta_fsp)
+
+    var part_patches_meta             = grid.createPartitionOfMetaPatches(patches_meta); -- complete partition of patches_meta
+    var part_patches_grid             = [grid.createPartitionOfFullPatches(grid_fsp)](patches_grid); -- complete partition of patches_grid
+
+    var part_patches_grid_int         = [grid.createPartitionOfInteriorPatches (grid_fsp)](patches_grid);
+    var part_patches_grid_i_prev_send = [grid.createPartitionOfIPrevSendBuffers(grid_fsp)](patches_grid);
+    var part_patches_grid_i_next_send = [grid.createPartitionOfINextSendBuffers(grid_fsp)](patches_grid);
+    var part_patches_grid_i_prev_recv = [grid.createPartitionOfIPrevRecvBuffers(grid_fsp)](patches_grid);
+    var part_patches_grid_i_next_recv = [grid.createPartitionOfINextRecvBuffers(grid_fsp)](patches_grid);
+    var part_patches_grid_j_prev_send = [grid.createPartitionOfJPrevSendBuffers(grid_fsp)](patches_grid);
+    var part_patches_grid_j_next_send = [grid.createPartitionOfJNextSendBuffers(grid_fsp)](patches_grid);
+    var part_patches_grid_j_prev_recv = [grid.createPartitionOfJPrevRecvBuffers(grid_fsp)](patches_grid);
+    var part_patches_grid_j_next_recv = [grid.createPartitionOfJNextRecvBuffers(grid_fsp)](patches_grid);
+
+
+    -- TEST BASE GRID INITIALIZATION
+    grid.metaGridInit(patches_meta, part_patches_meta);
+    [writeActiveMeta("output_base_meta_init.dat")](patches_meta, part_patches_meta);
+
+    
+
+    -- TEST REFINEMENT
+    for pid in part_patches_meta.colors do
+        part_patches_meta[pid][pid].refine_req = (stdlib.rand() % 2) == 1
+    end
+    [writeActiveMeta("output_base_meta_refine_reqs.dat")](patches_meta, part_patches_meta);
+    grid.metaRefine(patches_meta, part_patches_meta);
+    [writeActiveMeta("output_meta_refined.dat")](patches_meta, part_patches_meta);
+
+    -- --fill(patches_meta.{level, i_coord, j_coord, i_next, j_next, i_prev, j_prev, parent, child1, child2, child3, child4}, -1);
+
+    -- -- TODO: Randomly raise several refine flags on base-level patches
+    -- grid.metaRefine (patches_meta, part_patches_meta)
+    -- -- TODO: Set raise coarsen flags on all higher-level patches
+    -- grid.metaCoarsen(patches_meta, part_patches_meta)
+
+    -- __demand(__index_launch)
+    -- for color in color_space do
+    --     grid.metaGridInit(part_patches_meta[color])
+    -- end
+
+    -- var isp_bounds_recv = part_patches_grid_i_prev_recv[int1d(0)].ispace.bounds;
+    -- var isp_bounds_send = part_patches_grid_i_next_send[int1d(0)].ispace.bounds;
+    -- -- c.printf("recv_buf = [(%d, %d) -- (%d, %d)]; send_buf = [(%d, %d) -- (%d, %d)]\n", isp_bounds_recv.lo.y, isp_bounds_recv.lo.z, isp_bounds_recv.hi.y, isp_bounds_recv.hi.z, isp_bounds_send.lo.y, isp_bounds_send.lo.z, isp_bounds_send.hi.y, isp_bounds_send.hi.z);
+    -- --[grid.deepCopy2(grid_fsp)](part_patches_grid_i_prev_recv[0], part_patches_grid_i_next_send[2])
+    -- --[grid.deepCopy (grid_fsp)](part_patches_grid_i_prev_recv[0], part_patches_grid_i_next_send[2])
+    -- --[grid.deepCopy (grid_fsp)](part_patches_grid_i_prev_recv[2], part_patches_grid_i_next_send[0])
+
+    -- [grid.fillGhosts(grid_fsp)](
+    --   patches_meta,
+    --   part_patches_meta,
+    --   patches_grid,
+    --   part_patches_grid_i_prev_send,
+    --   part_patches_grid_i_next_send,
+    --   part_patches_grid_j_prev_send,
+    --   part_patches_grid_j_next_send,
+    --   part_patches_grid_i_prev_recv,
+    --   part_patches_grid_i_next_recv,
+    --   part_patches_grid_j_prev_recv,
+    --   part_patches_grid_j_next_recv
+    -- );
+    
+    
+end
+
+
+local target = os.getenv("OBJNAME")
+regentlib.saveobj(main, target, "executable")

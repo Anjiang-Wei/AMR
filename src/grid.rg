@@ -1,5 +1,6 @@
 import "regent"
-local c = regentlib.c
+local c    = regentlib.c
+local math = terralib.includec("math.h")
 
 
 local grid = {}
@@ -10,7 +11,7 @@ if grid.num_base_patches_j == nil then grid.num_base_patches_j = 4 end
 if grid.patch_size         == nil then grid.patch_size = 16 end
 if grid.level_max          == nil then grid.level_max = 1 end
 if grid.num_ghosts         == nil then grid.num_ghosts = 4 end
-if grid.num_patches_max    == nil then grid.num_patches_max = (bit.lshift(1, 2*grid.level_max)) * grid.num_base_patches_i * grid.num_base_patches_j end
+if grid.num_patches_max    == nil then grid.num_patches_max = math.ceil( (bit.lshift(4, 2*grid.level_max) - 1) * grid.num_base_patches_i * grid.num_base_patches_j / 3)  end
 
 grid.full_patch_size = grid.patch_size + 2 * grid.num_ghosts -- patch size including interior region and ghost region
 grid.idx_min         = -grid.num_ghosts                      -- starting index of the patch index space in each dimension including ghost region
@@ -400,39 +401,40 @@ end
 
 -- Initialize the meta patches on base level
 task grid.metaGridInit(
-    meta_patches : region(ispace(int1d), grid_meta_fsp)
+    meta_patches_region : region(ispace(int1d), grid_meta_fsp),
+    meta_patches        : partition(disjoint, complete, meta_patches_region, ispace(int1d))
 )
 where
-    writes (meta_patches)
+    writes (meta_patches_region)
 do
     var num_base_patches : int = grid.num_base_patches_i * grid.num_base_patches_j
-    for pid in meta_patches.ispace do
+    for pid in meta_patches.colors do
         if (int(pid) < num_base_patches) then
             var my_i_coord : int = int(pid) / grid.num_base_patches_j
             var my_j_coord : int = int(pid) % grid.num_base_patches_j
-            meta_patches[pid].level   = 0
-            meta_patches[pid].i_coord = my_i_coord
-            meta_patches[pid].j_coord = my_j_coord
-            meta_patches[pid].i_prev  = baseCoordToPid(int(my_i_coord - 1 + grid.num_base_patches_i) % grid.num_base_patches_i, my_j_coord)
-            meta_patches[pid].i_next  = baseCoordToPid(int(my_i_coord + 1                          ) % grid.num_base_patches_i, my_j_coord)
-            meta_patches[pid].j_prev  = baseCoordToPid(my_i_coord, int(my_j_coord - 1 + grid.num_base_patches_j) % grid.num_base_patches_j)
-            meta_patches[pid].j_next  = baseCoordToPid(my_i_coord, int(my_j_coord + 1                          ) % grid.num_base_patches_j)
+            meta_patches[pid][pid].level   = 0
+            meta_patches[pid][pid].i_coord = my_i_coord
+            meta_patches[pid][pid].j_coord = my_j_coord
+            meta_patches[pid][pid].i_prev  = baseCoordToPid(int(my_i_coord - 1 + grid.num_base_patches_i) % grid.num_base_patches_i, my_j_coord)
+            meta_patches[pid][pid].i_next  = baseCoordToPid(int(my_i_coord + 1                          ) % grid.num_base_patches_i, my_j_coord)
+            meta_patches[pid][pid].j_prev  = baseCoordToPid(my_i_coord, int(my_j_coord - 1 + grid.num_base_patches_j) % grid.num_base_patches_j)
+            meta_patches[pid][pid].j_next  = baseCoordToPid(my_i_coord, int(my_j_coord + 1                          ) % grid.num_base_patches_j)
         else
-            meta_patches[pid].level   = -1
-            meta_patches[pid].i_coord = -1
-            meta_patches[pid].j_coord = -1
-            meta_patches[pid].i_prev  = -1
-            meta_patches[pid].i_next  = -1
-            meta_patches[pid].j_prev  = -1
-            meta_patches[pid].j_next  = -1
+            meta_patches[pid][pid].level   = -1
+            meta_patches[pid][pid].i_coord = -1
+            meta_patches[pid][pid].j_coord = -1
+            meta_patches[pid][pid].i_prev  = -1
+            meta_patches[pid][pid].i_next  = -1
+            meta_patches[pid][pid].j_prev  = -1
+            meta_patches[pid][pid].j_next  = -1
         end
-        meta_patches[pid].parent      = -1
-        meta_patches[pid].child[0]    = -1
-        meta_patches[pid].child[1]    = -1
-        meta_patches[pid].child[2]    = -1
-        meta_patches[pid].child[3]    = -1
-        meta_patches[pid].refine_req  = false
-        meta_patches[pid].coarsen_req = false
+        meta_patches[pid][pid].parent      = -1
+        meta_patches[pid][pid].child[0]    = -1
+        meta_patches[pid][pid].child[1]    = -1
+        meta_patches[pid][pid].child[2]    = -1
+        meta_patches[pid][pid].child[3]    = -1
+        meta_patches[pid][pid].refine_req  = false
+        meta_patches[pid][pid].coarsen_req = false
     end
 end
 
@@ -517,6 +519,7 @@ function grid.fillGhosts(fsp)
 end
 
 
+
 -- Helper task: return the first pid wtih continuous available segment of "length" patches
 local task getAvailableSegPatches(
     meta_patches_region : region(ispace(int1d), grid_meta_fsp),
@@ -528,13 +531,14 @@ where
 do
     var offset     : int = grid.num_base_patches_i * grid.num_base_patches_j
     var num_checks : int = grid.num_patches_max - offset - length
+    var valid : bool
     for pid in ispace(int1d, num_checks, offset) do
-        var valid : bool = true
+        valid = true
         for j = 0, length-1 do
             var pid_next = pid + int1d(j)
-            valid = valid and (meta_patches[pid_next][pid_next].level > -1)
+            valid = valid and (meta_patches[pid_next][pid_next].level < 0)
         end
-        if (valid) then return pid end
+        return pid
     end
     regentlib.assert(false, "Cannot find any segment of available patches.")
 end
@@ -670,6 +674,7 @@ local function _resetMetaPatch(child_patch, meta_patches)
 end
 
 
+
 -- Calculate coarsened pattern using meta-patches only
 --
 -- ^ j
@@ -698,5 +703,31 @@ do
         end
     end -- for pid
 end
+
+
+-- Clear all refine requests after the refinement is completed
+__demand(__inline)
+task grid.clearRefineReq(
+    meta_patches_region : region(ispace(int1d), grid_meta_fsp)
+)
+where
+    writes(meta_patches_region.refine_req)
+do
+    fill(meta_patches_region.refine_req, false)
+end
+
+
+
+-- Clear all coarsen requests after the coarsening is completed
+__demand(__inline)
+task grid.clearCoarsenReq(
+    meta_patches_region : region(ispace(int1d), grid_meta_fsp)
+)
+where
+    writes(meta_patches_region.coarsen_req)
+do
+    fill(meta_patches_region.coarsen_req, false)
+end
+
 
 return grid
