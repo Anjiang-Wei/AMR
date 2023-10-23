@@ -69,6 +69,12 @@ function grid.createMetaRegion()
 end
 
 
+-- Get a patch from a partition
+function _patch(part, pid)
+    return rexpr part[pid][pid] end
+end
+
+
 
 -- Color the given region of meta-patches and return the partition by colors
 task grid.createPartitionOfMetaPatches (
@@ -527,7 +533,7 @@ local task getAvailableSegPatches(
     length              : int
 )
 where
-    reads (meta_patches_region.level)
+    reads writes atomic(meta_patches_region.level)
 do
     var offset     : int = grid.num_base_patches_i * grid.num_base_patches_j
     var num_checks : int = grid.num_patches_max - offset - length
@@ -538,9 +544,33 @@ do
             var pid_next = pid + int1d(j)
             valid = valid and (meta_patches[pid_next][pid_next].level < 0)
         end
-        return pid
+        if (valid) then
+            for j = 0, length-1 do
+                var pid_next = pid + int1d(j)
+                meta_patches[pid_next][pid_next].level = 9999
+            end
+            return pid
+        end
     end
     regentlib.assert(false, "Cannot find any segment of available patches.")
+end
+
+
+-- Enforce the activation of refine requests follows the AMR rule of refinement.
+-- TODO: finish this for more complicated refine patterns
+local __demand(__inline) task metaRefineFix(
+    meta_patches_region : region(ispace(int1d), grid_meta_fsp),
+    meta_patches        : partition(disjoint, complete, meta_patches_region, ispace(int1d))
+)
+where
+    reads writes (meta_patches_region)
+do
+    for pid in meta_patches.colors do
+        if (meta_patches[pid][pid].refine_req == true) then
+            if (meta_patches[pid][pid].level < 0) then meta_patches[pid][pid].refine_req = false end
+            -- TODO: finish this!!!!!!!!
+        end
+    end
 end
 
 
@@ -560,65 +590,67 @@ task grid.metaRefine(
     meta_patches        : partition(disjoint, complete, meta_patches_region, ispace(int1d))
 )
 where
-    reads writes (meta_patches_region)
+    reads writes atomic(meta_patches_region)
 do
+
+    metaRefineFix(meta_patches_region, meta_patches)
 
     for pid in meta_patches.colors do
         var parent_patch = meta_patches[pid][pid];
         if ((parent_patch.level > -1) and (parent_patch.child[0] < 0) and parent_patch.refine_req) then
             -- Get four available patches from the list as the four new children
             var pid_child : int1d = getAvailableSegPatches(meta_patches_region, meta_patches, 4)
-            for child_loc = 0, 3 do
+            c.printf("[grid.metaRefine] parent_pid = %d, child_pid = %d - %d\n", int(pid), int(pid_child), int(pid_child)+3)
+            for child_loc = 0, 4 do
                 var pid_child_j : int1d = pid_child + child_loc
-                var child_patch = meta_patches[pid_child_j][pid_child_j]
-                child_patch.level = parent_patch.level + 1
-                child_patch.parent = int(pid)
-                child_patch.i_coord = parent_patch.i_coord * 2 + int(child_loc == 1) + int(child_loc == 3)
-                child_patch.j_coord = parent_patch.j_coord * 2 + int(child_loc == 2) + int(child_loc == 3)
+                meta_patches[pid_child_j][pid_child_j].level = parent_patch.level + 1
+                meta_patches[pid_child_j][pid_child_j].parent = int(pid)
+                meta_patches[pid_child_j][pid_child_j].i_coord = parent_patch.i_coord * 2 + int(child_loc == 1) + int(child_loc == 3)
+                meta_patches[pid_child_j][pid_child_j].j_coord = parent_patch.j_coord * 2 + int(child_loc == 2) + int(child_loc == 3)
+                meta_patches[pid][pid].child[child_loc] = int(pid_child_j)
             end -- for child_loc
         end
     end -- for pid
 
     for pid in meta_patches.colors do
         var parent_patch = meta_patches[pid][pid];
-        if ((parent_patch.level > -1) and (parent_patch.child[0] < 0) and parent_patch.refine_req) then
-            for child_loc = 0, 3 do
+        if (parent_patch.refine_req) then
+            for child_loc = 0, 4 do
                 var pid_child_j : int1d = parent_patch.child[child_loc]
-                var child_patch = meta_patches[pid_child_j][pid_child_j]
 
                 if (child_loc == 0 or child_loc == 2) then
-                    child_patch.i_next = int(pid_child_j) + 1
+                    meta_patches[pid_child_j][pid_child_j].i_next = int(pid_child_j) + 1
                     if (parent_patch.i_prev > -1) then
                         var parent_nbr = meta_patches[parent_patch.i_prev][parent_patch.i_prev]
-                        child_patch.i_prev = parent_nbr.child[child_loc + 1]
+                        meta_patches[pid_child_j][pid_child_j].i_prev = parent_nbr.child[child_loc + 1]
                     else
-                        child_patch.i_prev = -1
+                        meta_patches[pid_child_j][pid_child_j].i_prev = -1
                     end
                 else
-                    child_patch.i_prev = int(pid_child_j) - 1
+                    meta_patches[pid_child_j][pid_child_j].i_prev = int(pid_child_j) - 1
                     if (parent_patch.i_next > -1) then
                         var parent_nbr = meta_patches[parent_patch.i_next][parent_patch.i_next]
-                        child_patch.i_next = parent_nbr.child[child_loc - 1]
+                        meta_patches[pid_child_j][pid_child_j].i_next = parent_nbr.child[child_loc - 1]
                     else
-                        child_patch.i_next = -1
+                        meta_patches[pid_child_j][pid_child_j].i_next = -1
                     end
                 end
 
                 if (child_loc == 0 or child_loc == 1) then
-                    child_patch.j_next = int(pid_child_j) + 2
+                    meta_patches[pid_child_j][pid_child_j].j_next = int(pid_child_j) + 2
                     if (parent_patch.j_prev > -1) then
                         var parent_nbr = meta_patches[parent_patch.j_prev][parent_patch.j_prev]
-                        child_patch.j_prev = parent_nbr.child[child_loc + 2]
+                        meta_patches[pid_child_j][pid_child_j].j_prev = parent_nbr.child[child_loc + 2]
                     else
-                        child_patch.j_prev = -1
+                        meta_patches[pid_child_j][pid_child_j].j_prev = -1
                     end
                 else
-                    child_patch.j_prev = int(pid_child_j) - 2
+                    meta_patches[pid_child_j][pid_child_j].j_prev = int(pid_child_j) - 2
                     if (parent_patch.j_next > -1) then
                         var parent_nbr = meta_patches[parent_patch.j_next][parent_patch.j_next]
-                        child_patch.j_next = parent_nbr.child[child_loc - 2]
+                        meta_patches[pid_child_j][pid_child_j].j_next = parent_nbr.child[child_loc - 2]
                     else
-                        child_patch.j_next = -1
+                        meta_patches[pid_child_j][pid_child_j].j_next = -1
                     end
                 end
             end -- for child_loc
@@ -646,31 +678,37 @@ local function _allChildrenAreCoarsenable(parent_patch, meta_patches)
 end
 
 
--- Helper function to reset a meta-patch used for deleting a meta-patch
--- Args:
---   child_patch : a child patch that can be safely deleted
---  meta_patches : partition of all meta patches
-local function _resetMetaPatch(child_patch, meta_patches)
-    return rquote
-        var nbr_patch_i_prev = meta_patches[child_patch.i_prev][child_patch.i_prev]
-        var nbr_patch_i_next = meta_patches[child_patch.i_next][child_patch.i_next]
-        var nbr_patch_j_prev = meta_patches[child_patch.j_prev][child_patch.j_prev]
-        var nbr_patch_j_next = meta_patches[child_patch.j_next][child_patch.j_next]
-        child_patch.level       = -1;
-        child_patch.i_coord     = -1;
-        child_patch.j_coord     = -1;
-        child_patch.parent      = -1;
-        child_patch.refine_req  = false;
-        child_patch.coarsen_req = false;
-        child_patch.i_prev      = -1;
-        child_patch.j_prev      = -1;
-        child_patch.i_next      = -1;
-        child_patch.j_next      = -1;
-        nbr_patch_i_prev.i_next = -1;
-        nbr_patch_j_prev.j_next = -1;
-        nbr_patch_i_next.i_prev = -1;
-        nbr_patch_j_next.j_prev = -1;
-    end
+
+
+-- Reset a meta-patch used for deleting a meta-patch
+-- pid -- patch ID to be deleted
+local __demand(__inline) task _resetMetaPatch(
+    meta_patches_region : region(ispace(int1d), grid_meta_fsp),
+    meta_patches        : partition(disjoint, complete, meta_patches_region, ispace(int1d)),
+    pid                 : int
+)
+where
+    reads writes (meta_patches_region)
+do
+    var i_prev : int1d = int1d(meta_patches[int1d(pid)][int1d(pid)].i_prev)
+    var i_next : int1d = int1d(meta_patches[int1d(pid)][int1d(pid)].i_next)
+    var j_prev : int1d = int1d(meta_patches[int1d(pid)][int1d(pid)].j_prev)
+    var j_next : int1d = int1d(meta_patches[int1d(pid)][int1d(pid)].j_next)
+
+    meta_patches[i_prev][i_prev].i_next = -1;
+    meta_patches[i_next][i_next].j_next = -1;
+    meta_patches[j_prev][j_prev].i_prev = -1;
+    meta_patches[j_next][j_next].j_prev = -1;
+    meta_patches[pid][pid].level        = -1;
+    meta_patches[pid][pid].i_coord      = -1;
+    meta_patches[pid][pid].j_coord      = -1;
+    meta_patches[pid][pid].parent       = -1;
+    meta_patches[pid][pid].refine_req   = false;
+    meta_patches[pid][pid].coarsen_req  = false;
+    meta_patches[pid][pid].i_prev       = -1;
+    meta_patches[pid][pid].j_prev       = -1;
+    meta_patches[pid][pid].i_next       = -1;
+    meta_patches[pid][pid].j_next       = -1;
 end
 
 
@@ -695,10 +733,10 @@ do
     for pid in meta_patches.colors do
         var parent_patch = meta_patches[pid][pid];
         if ([_allChildrenAreCoarsenable(parent_patch, meta_patches)]) then
-            for child_loc = 0, 3 do
-                var child_patch = meta_patches[parent_patch.child[child_loc]][parent_patch.child[child_loc]];
-                [_resetMetaPatch(child_patch, meta_patches)]
-                parent_patch.child[child_loc] = -1
+            for child_loc = 0, 4 do
+                var child_pid : int1d = parent_patch.child[child_loc];
+                _resetMetaPatch(meta_patches_region, meta_patches, child_pid)
+                meta_patches[pid][pid].child[child_loc] = -1
             end -- for child_loc
         end
     end -- for pid

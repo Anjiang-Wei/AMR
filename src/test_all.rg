@@ -23,15 +23,16 @@ function writeActiveMeta(fname)
         reads (meta_patches_region)
     do
         var file = c.fopen(fname, "w")
-        c.fprintf(file, "%7s, %7s, %7s, %7s, %7s, %7s, %7s, %7s, %7s, %7s, %7s, %7s, %7s\n",
-                    "pid", "level", "i_coord", "j_coord", "i_prev", "i_next", "j_prev", "j_next", "parent", "child0", "child1", "child2", "child3");
+        c.fprintf(file, "%7s, %7s, %7s, %7s, %7s, %7s, %7s, %7s, %7s, %7s, %7s, %7s, %7s, %7s, %7s\n",
+                    "pid", "level", "i_coord", "j_coord", "i_prev", "i_next", "j_prev", "j_next", "parent", "child0", "child1", "child2", "child3", "r_req", "c_req");
         for pid in meta_patches.colors do
             var patch = meta_patches[pid][pid]
             if (patch.level > -1) then
-                c.fprintf(file, "%7d, %7d, %7d, %7d, %7d, %7d, %7d, %7d, %7d, %7d, %7d, %7d, %7d\n",
+                c.fprintf(file, "%7d, %7d, %7d, %7d, %7d, %7d, %7d, %7d, %7d, %7d, %7d, %7d, %7d, %7d, %7d\n",
                     int(pid), patch.level, patch.i_coord, patch.j_coord,
                     patch.i_prev, patch.i_next, patch.j_prev, patch.j_next,
-                    patch.parent, patch.child[0], patch.child[1], patch.child[2], patch.child[3]);
+                    patch.parent, patch.child[0], patch.child[1], patch.child[2], patch.child[3],
+                    patch.refine_req, patch.coarsen_req);
             end
         end -- for pid
         c.fclose(file)
@@ -70,7 +71,7 @@ task main()
 
     -- TEST BASE GRID INITIALIZATION
     grid.metaGridInit(patches_meta, part_patches_meta);
-    [writeActiveMeta("output_base_meta_init.dat")](patches_meta, part_patches_meta);
+    [writeActiveMeta("output_meta_init.dat")](patches_meta, part_patches_meta);
 
     
 
@@ -78,7 +79,7 @@ task main()
     for pid in part_patches_meta.colors do
         part_patches_meta[pid][pid].refine_req = (stdlib.rand() % 2) == 1
     end
-    [writeActiveMeta("output_base_meta_refine_reqs.dat")](patches_meta, part_patches_meta);
+    [writeActiveMeta("output_meta_refine_reqs.dat")](patches_meta, part_patches_meta);
     grid.metaRefine(patches_meta, part_patches_meta);
     [writeActiveMeta("output_meta_refined.dat")](patches_meta, part_patches_meta);
 
