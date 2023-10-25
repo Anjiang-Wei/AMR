@@ -44,6 +44,7 @@ end
 task main()
     var output_path = "./build"
 
+
     c.printf("Solver initialization:")
     c.printf("  -- Patch size (interior) : %d x %d\n", grid.patch_size, grid.patch_size)
     c.printf("  -- Ghost points on each side in each dimension: %d\n", grid.num_ghosts)
@@ -73,49 +74,37 @@ task main()
     grid.metaGridInit(patches_meta, part_patches_meta);
     [writeActiveMeta("output_meta_init.dat")](patches_meta, part_patches_meta);
 
-    
-
     -- TEST REFINEMENT
     for pid in part_patches_meta.colors do
         part_patches_meta[pid][pid].refine_req = (stdlib.rand() % 2) == 1
     end
-    [writeActiveMeta("output_meta_refine_reqs.dat")](patches_meta, part_patches_meta);
+    [writeActiveMeta("output_meta_refine_stage_0.dat")](patches_meta, part_patches_meta);
     grid.metaRefine(patches_meta, part_patches_meta);
-    [writeActiveMeta("output_meta_refined.dat")](patches_meta, part_patches_meta);
+    [writeActiveMeta("output_meta_refine_stage_1.dat")](patches_meta, part_patches_meta);
+    grid.clearRefineReqs(patches_meta);
+    [writeActiveMeta("output_meta_refine_stage_2.dat")](patches_meta, part_patches_meta);
 
-    -- --fill(patches_meta.{level, i_coord, j_coord, i_next, j_next, i_prev, j_prev, parent, child1, child2, child3, child4}, -1);
-
-    -- -- TODO: Randomly raise several refine flags on base-level patches
-    -- grid.metaRefine (patches_meta, part_patches_meta)
-    -- -- TODO: Set raise coarsen flags on all higher-level patches
-    -- grid.metaCoarsen(patches_meta, part_patches_meta)
-
-    -- __demand(__index_launch)
-    -- for color in color_space do
-    --     grid.metaGridInit(part_patches_meta[color])
-    -- end
-
-    -- var isp_bounds_recv = part_patches_grid_i_prev_recv[int1d(0)].ispace.bounds;
-    -- var isp_bounds_send = part_patches_grid_i_next_send[int1d(0)].ispace.bounds;
-    -- -- c.printf("recv_buf = [(%d, %d) -- (%d, %d)]; send_buf = [(%d, %d) -- (%d, %d)]\n", isp_bounds_recv.lo.y, isp_bounds_recv.lo.z, isp_bounds_recv.hi.y, isp_bounds_recv.hi.z, isp_bounds_send.lo.y, isp_bounds_send.lo.z, isp_bounds_send.hi.y, isp_bounds_send.hi.z);
-    -- --[grid.deepCopy2(grid_fsp)](part_patches_grid_i_prev_recv[0], part_patches_grid_i_next_send[2])
-    -- --[grid.deepCopy (grid_fsp)](part_patches_grid_i_prev_recv[0], part_patches_grid_i_next_send[2])
-    -- --[grid.deepCopy (grid_fsp)](part_patches_grid_i_prev_recv[2], part_patches_grid_i_next_send[0])
-
-    -- [grid.fillGhosts(grid_fsp)](
-    --   patches_meta,
-    --   part_patches_meta,
-    --   patches_grid,
-    --   part_patches_grid_i_prev_send,
-    --   part_patches_grid_i_next_send,
-    --   part_patches_grid_j_prev_send,
-    --   part_patches_grid_j_next_send,
-    --   part_patches_grid_i_prev_recv,
-    --   part_patches_grid_i_next_recv,
-    --   part_patches_grid_j_prev_recv,
-    --   part_patches_grid_j_next_recv
-    -- );
+    -- TEST COARSENING
+    for pid in part_patches_meta.colors do
+        part_patches_meta[pid][pid].coarsen_req = (stdlib.rand() % 4) > 0
+    end
+    [writeActiveMeta("output_meta_coarsen_stage_0.dat")](patches_meta, part_patches_meta);
+    grid.metaCoarsen(patches_meta, part_patches_meta);
+    [writeActiveMeta("output_meta_coarsen_stage_1.dat")](patches_meta, part_patches_meta);
+    grid.clearCoarsenReqs(patches_meta);
+    [writeActiveMeta("output_meta_coarsen_stage_2.dat")](patches_meta, part_patches_meta);
     
+    -- TEST REFINEMENT AGAIN
+    for pid in part_patches_meta.colors do
+        part_patches_meta[pid][pid].refine_req = (stdlib.rand() % 3) == 0
+    end
+    [writeActiveMeta("output_meta_further_refine_stage_0.dat")](patches_meta, part_patches_meta);
+    grid.metaRefine(patches_meta, part_patches_meta);
+    [writeActiveMeta("output_meta_further_refine_stage_1.dat")](patches_meta, part_patches_meta);
+    grid.clearRefineReqs(patches_meta);
+    [writeActiveMeta("output_meta_further_refine_stage_2.dat")](patches_meta, part_patches_meta);
+
+
     
 end
 

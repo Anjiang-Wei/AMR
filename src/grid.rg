@@ -6,10 +6,10 @@ local math = terralib.includec("math.h")
 local grid = {}
 
 
-if grid.num_base_patches_i == nil then grid.num_base_patches_i = 4 end
-if grid.num_base_patches_j == nil then grid.num_base_patches_j = 4 end
+if grid.num_base_patches_i == nil then grid.num_base_patches_i = 8 end
+if grid.num_base_patches_j == nil then grid.num_base_patches_j = 8 end
 if grid.patch_size         == nil then grid.patch_size = 16 end
-if grid.level_max          == nil then grid.level_max = 1 end
+if grid.level_max          == nil then grid.level_max = 2 end
 if grid.num_ghosts         == nil then grid.num_ghosts = 4 end
 if grid.num_patches_max    == nil then grid.num_patches_max = math.ceil( (bit.lshift(4, 2*grid.level_max) - 1) * grid.num_base_patches_i * grid.num_base_patches_j / 3)  end
 
@@ -567,7 +567,48 @@ where
 do
     for pid in meta_patches.colors do
         if (meta_patches[pid][pid].refine_req == true) then
-            if (meta_patches[pid][pid].level < 0) then meta_patches[pid][pid].refine_req = false end
+            if (meta_patches[pid][pid].level < 0 or meta_patches[pid][pid].level == grid.level_max) then
+                meta_patches[pid][pid].refine_req = false
+            end
+            if (meta_patches[pid][pid].child[0] > -1) then meta_patches[pid][pid].refine_req = false end
+            if (meta_patches[pid][pid].i_prev   <  0) then
+                var pid_parent     : int1d = int1d(meta_patches[pid][pid].parent)
+                var pid_parent_nbr : int1d = int1d(meta_patches[pid_parent][pid_parent].i_prev)
+                meta_patches[pid_parent_nbr][pid_parent_nbr].refine_req = true
+            end
+            if (meta_patches[pid][pid].i_next   <  0) then
+                var pid_parent     : int1d = int1d(meta_patches[pid][pid].parent)
+                var pid_parent_nbr : int1d = int1d(meta_patches[pid_parent][pid_parent].i_next)
+                meta_patches[pid_parent_nbr][pid_parent_nbr].refine_req = true
+            end
+            if (meta_patches[pid][pid].j_prev   <  0) then
+                var pid_parent     : int1d = int1d(meta_patches[pid][pid].parent)
+                var pid_parent_nbr : int1d = int1d(meta_patches[pid_parent][pid_parent].j_prev)
+                meta_patches[pid_parent_nbr][pid_parent_nbr].refine_req = true
+            end
+            if (meta_patches[pid][pid].j_next   <  0) then
+                var pid_parent     : int1d = int1d(meta_patches[pid][pid].parent)
+                var pid_parent_nbr : int1d = int1d(meta_patches[pid_parent][pid_parent].j_next)
+                meta_patches[pid_parent_nbr][pid_parent_nbr].refine_req = true
+            end
+            -- TODO: finish this!!!!!!!!
+        end
+    end
+end
+
+
+
+local __demand(__inline) task metaCoarsenFix(
+    meta_patches_region : region(ispace(int1d), grid_meta_fsp),
+    meta_patches        : partition(disjoint, complete, meta_patches_region, ispace(int1d))
+)
+where
+    reads writes (meta_patches_region)
+do
+    for pid in meta_patches.colors do
+        if (meta_patches[pid][pid].coarsen_req == true) then
+            if (meta_patches[pid][pid].level    <  1) then meta_patches[pid][pid].coarsen_req = false end
+            if (meta_patches[pid][pid].child[0] > -1) then meta_patches[pid][pid].coarsen_req = false end
             -- TODO: finish this!!!!!!!!
         end
     end
@@ -600,7 +641,6 @@ do
         if ((parent_patch.level > -1) and (parent_patch.child[0] < 0) and parent_patch.refine_req) then
             -- Get four available patches from the list as the four new children
             var pid_child : int1d = getAvailableSegPatches(meta_patches_region, meta_patches, 4)
-            c.printf("[grid.metaRefine] parent_pid = %d, child_pid = %d - %d\n", int(pid), int(pid_child), int(pid_child)+3)
             for child_loc = 0, 4 do
                 var pid_child_j : int1d = pid_child + child_loc
                 meta_patches[pid_child_j][pid_child_j].level = parent_patch.level + 1
@@ -622,7 +662,9 @@ do
                     meta_patches[pid_child_j][pid_child_j].i_next = int(pid_child_j) + 1
                     if (parent_patch.i_prev > -1) then
                         var parent_nbr = meta_patches[parent_patch.i_prev][parent_patch.i_prev]
-                        meta_patches[pid_child_j][pid_child_j].i_prev = parent_nbr.child[child_loc + 1]
+                        var i_prev : int = parent_nbr.child[child_loc + 1]
+                        meta_patches[pid_child_j][pid_child_j].i_prev = i_prev
+                        if (i_prev > -1) then meta_patches[int1d(i_prev)][int1d(i_prev)].i_next = int(pid_child_j) end
                     else
                         meta_patches[pid_child_j][pid_child_j].i_prev = -1
                     end
@@ -630,7 +672,9 @@ do
                     meta_patches[pid_child_j][pid_child_j].i_prev = int(pid_child_j) - 1
                     if (parent_patch.i_next > -1) then
                         var parent_nbr = meta_patches[parent_patch.i_next][parent_patch.i_next]
-                        meta_patches[pid_child_j][pid_child_j].i_next = parent_nbr.child[child_loc - 1]
+                        var i_next : int = parent_nbr.child[child_loc - 1]
+                        meta_patches[pid_child_j][pid_child_j].i_next = i_next
+                        if (i_next > -1) then meta_patches[int1d(i_next)][int1d(i_next)].i_prev = int(pid_child_j) end
                     else
                         meta_patches[pid_child_j][pid_child_j].i_next = -1
                     end
@@ -640,7 +684,9 @@ do
                     meta_patches[pid_child_j][pid_child_j].j_next = int(pid_child_j) + 2
                     if (parent_patch.j_prev > -1) then
                         var parent_nbr = meta_patches[parent_patch.j_prev][parent_patch.j_prev]
-                        meta_patches[pid_child_j][pid_child_j].j_prev = parent_nbr.child[child_loc + 2]
+                        var j_prev : int = parent_nbr.child[child_loc + 2]
+                        meta_patches[pid_child_j][pid_child_j].j_prev = j_prev
+                        if (j_prev > -1) then meta_patches[int1d(j_prev)][int1d(j_prev)].j_next = int(pid_child_j) end
                     else
                         meta_patches[pid_child_j][pid_child_j].j_prev = -1
                     end
@@ -648,7 +694,9 @@ do
                     meta_patches[pid_child_j][pid_child_j].j_prev = int(pid_child_j) - 2
                     if (parent_patch.j_next > -1) then
                         var parent_nbr = meta_patches[parent_patch.j_next][parent_patch.j_next]
-                        meta_patches[pid_child_j][pid_child_j].j_next = parent_nbr.child[child_loc - 2]
+                        var j_next : int = parent_nbr.child[child_loc - 2]
+                        meta_patches[pid_child_j][pid_child_j].j_next = j_next
+                        if (j_next > -1) then meta_patches[int1d(j_next)][int1d(j_next)].j_prev = int(pid_child_j) end
                     else
                         meta_patches[pid_child_j][pid_child_j].j_next = -1
                     end
@@ -665,7 +713,8 @@ end
 --  meta_patches : partition of all meta patches
 local function _allChildrenAreCoarsenable(parent_patch, meta_patches)
     return rexpr
-        (parent_patch.level > -1)                                                 and
+        (parent_patch.level    > -1)                                              and
+        (parent_patch.child[0] > -1)                                              and
         (meta_patches[parent_patch.child[0]][parent_patch.child[0]].child[0] < 0) and
         (meta_patches[parent_patch.child[1]][parent_patch.child[1]].child[0] < 0) and
         (meta_patches[parent_patch.child[2]][parent_patch.child[2]].child[0] < 0) and
@@ -682,7 +731,7 @@ end
 
 -- Reset a meta-patch used for deleting a meta-patch
 -- pid -- patch ID to be deleted
-local __demand(__inline) task _resetMetaPatch(
+local __demand(__inline) task _resetLeafMetaPatch(
     meta_patches_region : region(ispace(int1d), grid_meta_fsp),
     meta_patches        : partition(disjoint, complete, meta_patches_region, ispace(int1d)),
     pid                 : int
@@ -690,14 +739,18 @@ local __demand(__inline) task _resetMetaPatch(
 where
     reads writes (meta_patches_region)
 do
-    var i_prev : int1d = int1d(meta_patches[int1d(pid)][int1d(pid)].i_prev)
-    var i_next : int1d = int1d(meta_patches[int1d(pid)][int1d(pid)].i_next)
-    var j_prev : int1d = int1d(meta_patches[int1d(pid)][int1d(pid)].j_prev)
-    var j_next : int1d = int1d(meta_patches[int1d(pid)][int1d(pid)].j_next)
+    var i_prev     : int1d = int1d(meta_patches[int1d(pid)][int1d(pid)].i_prev)
+    var i_next     : int1d = int1d(meta_patches[int1d(pid)][int1d(pid)].i_next)
+    var j_prev     : int1d = int1d(meta_patches[int1d(pid)][int1d(pid)].j_prev)
+    var j_next     : int1d = int1d(meta_patches[int1d(pid)][int1d(pid)].j_next)
+    var pid_parent : int1d = int1d(meta_patches[int1d(pid)][int1d(pid)].parent)
+    var i_coord    : int   = meta_patches[pid][pid].i_coord
+    var j_coord    : int   = meta_patches[pid][pid].j_coord
+    var child_loc  : int   = (i_coord % 2) + (j_coord % 2) * 2
 
     meta_patches[i_prev][i_prev].i_next = -1;
-    meta_patches[i_next][i_next].j_next = -1;
-    meta_patches[j_prev][j_prev].i_prev = -1;
+    meta_patches[i_next][i_next].i_prev = -1;
+    meta_patches[j_prev][j_prev].j_next = -1;
     meta_patches[j_next][j_next].j_prev = -1;
     meta_patches[pid][pid].level        = -1;
     meta_patches[pid][pid].i_coord      = -1;
@@ -709,6 +762,7 @@ do
     meta_patches[pid][pid].j_prev       = -1;
     meta_patches[pid][pid].i_next       = -1;
     meta_patches[pid][pid].j_next       = -1;
+    meta_patches[pid_parent][pid_parent].child[child_loc] = -1
 end
 
 
@@ -730,13 +784,14 @@ task grid.metaCoarsen(
 where
     reads writes (meta_patches_region)
 do
+    metaCoarsenFix(meta_patches_region, meta_patches)
+
     for pid in meta_patches.colors do
         var parent_patch = meta_patches[pid][pid];
         if ([_allChildrenAreCoarsenable(parent_patch, meta_patches)]) then
             for child_loc = 0, 4 do
                 var child_pid : int1d = parent_patch.child[child_loc];
-                _resetMetaPatch(meta_patches_region, meta_patches, child_pid)
-                meta_patches[pid][pid].child[child_loc] = -1
+                _resetLeafMetaPatch(meta_patches_region, meta_patches, child_pid)
             end -- for child_loc
         end
     end -- for pid
@@ -745,7 +800,7 @@ end
 
 -- Clear all refine requests after the refinement is completed
 __demand(__inline)
-task grid.clearRefineReq(
+task grid.clearRefineReqs(
     meta_patches_region : region(ispace(int1d), grid_meta_fsp)
 )
 where
@@ -758,7 +813,7 @@ end
 
 -- Clear all coarsen requests after the coarsening is completed
 __demand(__inline)
-task grid.clearCoarsenReq(
+task grid.clearCoarsenReqs(
     meta_patches_region : region(ispace(int1d), grid_meta_fsp)
 )
 where
