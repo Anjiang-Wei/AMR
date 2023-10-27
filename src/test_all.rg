@@ -79,9 +79,9 @@ task main()
         part_patches_meta[pid][pid].refine_req = (stdlib.rand() % 2) == 1
     end
     [writeActiveMeta("output_meta_refine_stage_0.dat")](patches_meta, part_patches_meta);
-    grid.metaRefine(patches_meta, part_patches_meta);
+    grid.refineInit(patches_meta, part_patches_meta);
     [writeActiveMeta("output_meta_refine_stage_1.dat")](patches_meta, part_patches_meta);
-    grid.clearRefineReqs(patches_meta);
+    grid.refineEnd(patches_meta);
     [writeActiveMeta("output_meta_refine_stage_2.dat")](patches_meta, part_patches_meta);
 
     -- TEST COARSENING
@@ -89,9 +89,9 @@ task main()
         part_patches_meta[pid][pid].coarsen_req = (stdlib.rand() % 4) > 0
     end
     [writeActiveMeta("output_meta_coarsen_stage_0.dat")](patches_meta, part_patches_meta);
-    grid.metaCoarsen(patches_meta, part_patches_meta);
+    grid.coarsenInit(patches_meta, part_patches_meta);
     [writeActiveMeta("output_meta_coarsen_stage_1.dat")](patches_meta, part_patches_meta);
-    grid.clearCoarsenReqs(patches_meta);
+    grid.coarsenEnd(patches_meta, part_patches_meta);
     [writeActiveMeta("output_meta_coarsen_stage_2.dat")](patches_meta, part_patches_meta);
     
     -- TEST REFINEMENT AGAIN
@@ -99,9 +99,9 @@ task main()
         part_patches_meta[pid][pid].refine_req = (stdlib.rand() % 3) == 0
     end
     [writeActiveMeta("output_meta_further_refine_stage_0.dat")](patches_meta, part_patches_meta);
-    grid.metaRefine(patches_meta, part_patches_meta);
+    grid.refineInit(patches_meta, part_patches_meta);
     [writeActiveMeta("output_meta_further_refine_stage_1.dat")](patches_meta, part_patches_meta);
-    grid.clearRefineReqs(patches_meta);
+    grid.refineEnd(patches_meta);
     [writeActiveMeta("output_meta_further_refine_stage_2.dat")](patches_meta, part_patches_meta);
 
     -- TEST COARSENING
@@ -109,9 +109,9 @@ task main()
         part_patches_meta[pid][pid].coarsen_req = (stdlib.rand() % 4) > 0
     end
     [writeActiveMeta("output_meta_further_coarsen_stage_0.dat")](patches_meta, part_patches_meta);
-    grid.metaCoarsen(patches_meta, part_patches_meta);
+    grid.coarsenInit(patches_meta, part_patches_meta);
     [writeActiveMeta("output_meta_further_coarsen_stage_1.dat")](patches_meta, part_patches_meta);
-    grid.clearCoarsenReqs(patches_meta);
+    grid.coarsenEnd(patches_meta, part_patches_meta);
     [writeActiveMeta("output_meta_further_coarsen_stage_2.dat")](patches_meta, part_patches_meta);
     
 

@@ -637,7 +637,7 @@ end
 -- | child[0] | child[1] |
 -- |---------------------| --> i
 --
-task grid.metaRefine(
+task grid.refineInit(
     meta_patches_region : region(ispace(int1d), grid_meta_fsp),
     meta_patches        : partition(disjoint, complete, meta_patches_region, ispace(int1d))
 )
@@ -718,6 +718,20 @@ do
 end
 
 
+
+-- Clear all refine requests after the refinement is completed
+__demand(__inline)
+task grid.refineEnd(
+    meta_patches_region : region(ispace(int1d), grid_meta_fsp)
+)
+where
+    writes(meta_patches_region.refine_req)
+do
+    fill(meta_patches_region.refine_req, false)
+end
+
+
+
 -- Helper function to test if all children of a given patch are leaves and they all have coarsen requests
 -- Args:
 --  parent_patch : sub-region of meta patch
@@ -778,6 +792,18 @@ end
 
 
 
+task grid.coarsenInit(
+    meta_patches_region : region(ispace(int1d), grid_meta_fsp),
+    meta_patches        : partition(disjoint, complete, meta_patches_region, ispace(int1d))
+)
+where
+    reads writes (meta_patches_region)
+do
+    metaCoarsenFix(meta_patches_region, meta_patches)
+end
+
+
+
 -- Calculate coarsened pattern using meta-patches only
 --
 -- ^ j
@@ -788,15 +814,13 @@ end
 -- | child[0] | child[1] |
 -- |---------------------| --> i
 --
-task grid.metaCoarsen(
+task grid.coarsenEnd(
     meta_patches_region : region(ispace(int1d), grid_meta_fsp),
     meta_patches        : partition(disjoint, complete, meta_patches_region, ispace(int1d))
 )
 where
     reads writes (meta_patches_region)
 do
-    metaCoarsenFix(meta_patches_region, meta_patches)
-
     for pid in meta_patches.colors do
         var parent_patch = meta_patches[pid][pid];
         if ([_allChildrenAreCoarsenable(parent_patch, meta_patches)]) then
@@ -806,32 +830,86 @@ do
             end -- for child_loc
         end
     end -- for pid
-end
-
-
--- Clear all refine requests after the refinement is completed
-__demand(__inline)
-task grid.clearRefineReqs(
-    meta_patches_region : region(ispace(int1d), grid_meta_fsp)
-)
-where
-    writes(meta_patches_region.refine_req)
-do
-    fill(meta_patches_region.refine_req, false)
-end
-
-
-
--- Clear all coarsen requests after the coarsening is completed
-__demand(__inline)
-task grid.clearCoarsenReqs(
-    meta_patches_region : region(ispace(int1d), grid_meta_fsp)
-)
-where
-    writes(meta_patches_region.coarsen_req)
-do
     fill(meta_patches_region.coarsen_req, false)
 end
+
+
+
+-- Upsample from parent to children
+-- Parent needs to have valid ghost values
+--
+-- ^ j
+-- |
+-- |---------------------|
+-- | child[2] | child[3] |
+-- |----------+----------|
+-- | child[0] | child[1] |
+-- |---------------------| --> i
+--
+__demand(__local)
+task grid.upsample (
+    parent : region(ispace(int3d), double), -- full patch
+    child0 : region(ispace(int3d), double), -- interior patch
+    child1 : region(ispace(int3d), double), -- interior patch
+    child2 : region(ispace(int3d), double), -- interior patch
+    child3 : region(ispace(int3d), double)  -- interior patch
+)
+where
+    reads(parent),
+    writes(child0, child1, child2, child3)
+do
+    -- cij means color-i-j
+    for cij in child0.ispace do
+        -- TODO
+        child0[cij] = parent[cij] -- placeholder scheme
+        child1[cij] = parent[cij] -- placeholder scheme
+        child2[cij] = parent[cij] -- placeholder scheme
+        child3[cij] = parent[cij] -- placeholder scheme
+    end
+end
+
+
+
+-- Downsample from children to parent
+-- All children to have valid ghost values
+--
+-- ^ j
+-- |
+-- |---------------------|
+-- | child[2] | child[3] |
+-- |----------+----------|
+-- | child[0] | child[1] |
+-- |---------------------| --> i
+--
+__demand(__local)
+task grid.downsample (
+    child0 : region(ispace(int3d), double), -- full patch
+    child1 : region(ispace(int3d), double), -- full patch
+    child2 : region(ispace(int3d), double), -- full patch
+    child3 : region(ispace(int3d), double), -- full patch
+    parent : region(ispace(int3d), double)  -- interior patch
+)
+where
+    reads(child0, child1, child2, child3),
+    writes(parent)
+do
+    -- cij means color-i-j
+    for cij in parent.ispace do
+        var child_i_loc : int = int(cij.y >= (grid.patch_size / 2))
+        var child_j_loc : int = int(cij.z >= (grid.patch_size / 2))
+        var child_loc   : int = child_i_loc + child_j_loc * 2
+        -- TODO
+        if     (child_loc == 0) then parent[cij] = child0[int3d({cij.x, cij.y, cij.z})] -- placeholder scheme
+        elseif (child_loc == 1) then parent[cij] = child1[int3d({cij.x, cij.y, cij.z})] -- placeholder scheme
+        elseif (child_loc == 2) then parent[cij] = child2[int3d({cij.x, cij.y, cij.z})] -- placeholder scheme
+        elseif (child_loc == 3) then parent[cij] = child3[int3d({cij.x, cij.y, cij.z})] -- placeholder scheme
+        end
+    end
+end
+
+
+
+
 
 
 return grid
