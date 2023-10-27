@@ -591,7 +591,7 @@ do
                 var pid_parent_nbr : int1d = int1d(meta_patches[pid_parent][pid_parent].j_next)
                 meta_patches[pid_parent_nbr][pid_parent_nbr].refine_req = true
             end
-            -- TODO: finish this!!!!!!!!
+            -- TODO: optimize this!!!!!!!!
         end
     end
 end
@@ -609,6 +609,17 @@ do
         if (meta_patches[pid][pid].coarsen_req == true) then
             if (meta_patches[pid][pid].level    <  1) then meta_patches[pid][pid].coarsen_req = false end
             if (meta_patches[pid][pid].child[0] > -1) then meta_patches[pid][pid].coarsen_req = false end
+
+            var nbr_id : int;
+            nbr_id = meta_patches[pid][pid].i_prev;
+            if (nbr_id > -1 and meta_patches[int1d(nbr_id)][int1d(nbr_id)].child[0] > -1) then meta_patches[pid][pid].coarsen_req = false end
+            nbr_id = meta_patches[pid][pid].j_prev;
+            if (nbr_id > -1 and meta_patches[int1d(nbr_id)][int1d(nbr_id)].child[0] > -1) then meta_patches[pid][pid].coarsen_req = false end
+            nbr_id = meta_patches[pid][pid].i_next;
+            if (nbr_id > -1 and meta_patches[int1d(nbr_id)][int1d(nbr_id)].child[0] > -1) then meta_patches[pid][pid].coarsen_req = false end
+            nbr_id = meta_patches[pid][pid].j_next;
+            if (nbr_id > -1 and meta_patches[int1d(nbr_id)][int1d(nbr_id)].child[0] > -1) then meta_patches[pid][pid].coarsen_req = false end
+
             -- TODO: finish this!!!!!!!!
         end
     end
