@@ -540,12 +540,12 @@ do
     var valid : bool
     for pid in ispace(int1d, num_checks, offset) do
         valid = true
-        for j = 0, length-1 do
+        for j = 0, length do
             var pid_next = pid + int1d(j)
             valid = valid and (meta_patches[pid_next][pid_next].level < 0)
         end
         if (valid) then
-            for j = 0, length-1 do
+            for j = 0, length do
                 var pid_next = pid + int1d(j)
                 meta_patches[pid_next][pid_next].level = 9999
             end
@@ -907,7 +907,19 @@ do
     end
 end
 
+-- Read from data patches, and set refine/coarsen flags in meta patches
+task grid.setRefineCoarsenFlags(
+    patches_grid_region : region(ispace(int3d), grid_fsp),
+    patches_grid        : partition(disjoint, complete, patches_grid_region, ispace(int1d)),
+    meta_patches_region : region(ispace(int1d), grid_meta_fsp),
+    meta_patches        : partition(disjoint, complete, meta_patches_region, ispace(int1d))
+)
+where
+    reads (patches_grid_region),
+    writes (meta_patches_region.{refine_req, coarsen_req})
+do
 
+end
 
 
 
