@@ -1,17 +1,17 @@
 import "regent"
-local c    = regentlib.c
-local math = terralib.includec("math.h")
+local usr_config = require("input")
+local c          = regentlib.c
+local math       = terralib.includec("math.h")
 
 
 local grid = {}
 
-
-if grid.num_base_patches_i == nil then grid.num_base_patches_i = 8 end
-if grid.num_base_patches_j == nil then grid.num_base_patches_j = 8 end
-if grid.patch_size         == nil then grid.patch_size = 16 end
-if grid.level_max          == nil then grid.level_max = 2 end
-if grid.num_ghosts         == nil then grid.num_ghosts = 4 end
-if grid.num_patches_max    == nil then grid.num_patches_max = math.ceil( (bit.lshift(4, 2*grid.level_max) - 1) * grid.num_base_patches_i * grid.num_base_patches_j / 3)  end
+grid.num_base_patches_i = usr_config.num_base_patches_i
+grid.num_base_patches_j = usr_config.num_base_patches_j
+grid.patch_size         = usr_config.patch_size
+grid.level_max          = usr_config.level_max
+grid.num_ghosts         = usr_config.num_ghosts
+grid.num_patches_max    = math.ceil( (bit.lshift(4, 2*grid.level_max) - 1) * grid.num_base_patches_i * grid.num_base_patches_j / 3)
 
 grid.full_patch_size = grid.patch_size + 2 * grid.num_ghosts -- patch size including interior region and ghost region
 grid.idx_min         = -grid.num_ghosts                      -- starting index of the patch index space in each dimension including ghost region

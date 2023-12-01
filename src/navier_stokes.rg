@@ -8,12 +8,46 @@ local grid       = require("grid")
 local numerics   = require(usr_config.numerics_modules)
 require("fields")
 
-local domain_length_x = usr_config.domain_length_x
-local domain_length_y = usr_config.domain_length_y
-local domain_shift_x  = usr_config.domain_shift_x
-local domain_shift_y  = usr_config.domain_shift_y 
+local domain_length_x         = usr_config.domain_length_x
+local domain_length_y         = usr_config.domain_length_y
+local domain_shift_x          = usr_config.domain_shift_x
+local domain_shift_y          = usr_config.domain_shift_y 
+local patch_size              = usr_config.patch_size
+local num_base_patches_i      = usr_config.num_base_patches_i
+local num_base_patches_j      = usr_config.num_base_patches_j
+
+local num_grid_points_base_i  = num_base_patches_i * patch_size
+local num_grid_points_base_j  = num_base_patches_j * patch_size
 
 local solver = {}
+
+local
+terra pow2(e : int) : int
+    return 1 << e
+end
+
+
+-- Calculate coordinate of grid points with given patch coordinate and level
+task solver.setGridPointCoordinates(
+    grid_patch : region(ispace(int3d), grid_fsp),
+    meta_patch : region(ispace(int1d), grid_meta_fsp)
+)
+where
+    reads (meta_patch.{i_coord, j_coord, level}),
+    writes (grid_patch)
+do
+    var level_fact  = pow2(meta_patch[0].level)
+    var dx : double = domain_length_x / (num_grid_points_base_i * level_fact)
+    var dy : double = domain_length_y / (num_grid_points_base_j * level_fact)
+    var x_start = meta_patch[0].i_coord * patch_size * dx + domain_shift_x;
+    var y_start = meta_patch[0].j_coord * patch_size * dy + domain_shift_y;
+    for cij in grid_patch.ispace do
+        grid_patch[cij].x = x_start + dx * cij.y
+        grid_patch[cij].y = y_start + dy * cij.z
+    end
+end
+
+
 
 task solver.main()
     c.printf("Solver initialization:")
@@ -50,24 +84,15 @@ task solver.main()
     -- INITIALIZE DATA PATCHES
     fill(rgn_patches_grid.x, 0);
     fill(rgn_patches_grid.y, 0);
+
+    __demand(__index_launch)
+    for color =  0, num_base_patches_i * num_base_patches_j do
+       solver.setGridPointCoordinates(patches_grid[color], patches_meta[color])
+    end
 end
 
 
--- Calculate coordinate of grid points with given patch coordinate and level
-task solver.setGridPointCoordinates(
-    grid_patch : region(ispace(int3d), grid_fsp),
-    meta_patch : region(ispace(int3d), grid_meta_fsp),
-    length_x   : double,
-    length_y   : double,
-    shift_x    : double,
-    shift_y    : double
-)
-where
-    reads (meta_patch.{i_coord, j_coord}),
-    writes (grid_patch)
-do
-    grid_patch.x = meta_patch.i_coord * length_x + shift_x;
-end
+
 
 
 return solver
