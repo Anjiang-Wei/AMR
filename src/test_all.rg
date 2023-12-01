@@ -74,6 +74,12 @@ task main()
     grid.metaGridInit(patches_meta, part_patches_meta);
     [writeActiveMeta("output_meta_init.dat")](patches_meta, part_patches_meta);
 
+    -- INITIALIZE DATA PATCHES
+    fill(patches_grid.x, 0);
+    fill(patches_grid.y, 0);
+    -- SET REFINE/COARSEN FLAGS
+    grid.setRefineCoarsenFlags(patches_grid, part_patches_grid_int, patches_meta, part_patches_meta);
+
     -- TEST REFINEMENT
     for pid in part_patches_meta.colors do
         part_patches_meta[pid][pid].refine_req = (stdlib.rand() % 2) == 1
