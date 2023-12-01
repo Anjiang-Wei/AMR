@@ -8,6 +8,10 @@ local grid       = require("grid")
 local numerics   = require(usr_config.numerics_modules)
 require("fields")
 
+local domain_length_x = usr_config.domain_length_x
+local domain_length_y = usr_config.domain_length_y
+local domain_shift_x  = usr_config.domain_shift_x
+local domain_shift_y  = usr_config.domain_shift_y 
 
 local solver = {}
 
@@ -46,6 +50,23 @@ task solver.main()
     -- INITIALIZE DATA PATCHES
     fill(rgn_patches_grid.x, 0);
     fill(rgn_patches_grid.y, 0);
+end
+
+
+-- Calculate coordinate of grid points with given patch coordinate and level
+task solver.setGridPointCoordinates(
+    grid_patch : region(ispace(int3d), grid_fsp),
+    meta_patch : region(ispace(int3d), grid_meta_fsp),
+    length_x   : double,
+    length_y   : double,
+    shift_x    : double,
+    shift_y    : double
+)
+where
+    reads (meta_patch.{i_coord, j_coord}),
+    writes (grid_patch)
+do
+    grid_patch.x = meta_patch.i_coord * length_x + shift_x;
 end
 
 
