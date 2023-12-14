@@ -1,11 +1,12 @@
 import "regent"
-local usr_config = require("input")
-local c          = regentlib.c
-local stdlib     = terralib.includec("stdlib.h")
-local string     = terralib.includec("string.h")
-local format     = require("std/format")
-local grid       = require("grid")
-local numerics   = require(usr_config.numerics_modules)
+local usr_config     = require("input")
+local problem_config = require("problem_config")
+local c              = regentlib.c
+local stdlib         = terralib.includec("stdlib.h")
+local string         = terralib.includec("string.h")
+local format         = require("std/format")
+local grid           = require("grid")
+local numerics       = require(usr_config.numerics_modules)
 require("fields")
 
 local domain_length_x         = usr_config.domain_length_x
@@ -63,6 +64,14 @@ task solver.main()
     -- region(ispace(int3d, {grid.num_patches_max, grid.full_patch_size, grid.full_patch_size}, {0, grid.idx_min, grid.idx_min}), grid_fsp)
     var rgn_patches_grid = [grid.createDataRegion(grid_fsp)];
 
+    var rgn_patches_pvars = [grid.createDataRegion(PVARS)];
+
+    var rgn_patches_cvars_0 = [grid.createDataRegion(CVARS)];
+
+    var rgn_patches_cvars_1 = [grid.createDataRegion(CVARS)];
+
+    var rgn_patches_cvars_2 = [grid.createDataRegion(CVARS)];
+
     -- region(ispace(int1d, grid.num_patches_max, 0), grid_meta_fsp)
     var rgn_patches_meta = [grid.createMetaRegion()];
 
@@ -80,14 +89,72 @@ task solver.main()
     var patches_grid_j_prev_recv = [grid.createPartitionOfJPrevRecvBuffers(grid_fsp)](rgn_patches_grid);
     var patches_grid_j_next_recv = [grid.createPartitionOfJNextRecvBuffers(grid_fsp)](rgn_patches_grid);
 
+    var patches_pvars             = [grid.createPartitionOfFullPatches(PVARS)](rgn_patches_pvars); -- complete partition of rgn_patches_pvars
+    var patches_pvars_int         = [grid.createPartitionOfInteriorPatches (PVARS)](rgn_patches_pvars);
+    var patches_pvars_i_prev_send = [grid.createPartitionOfIPrevSendBuffers(PVARS)](rgn_patches_pvars);
+    var patches_pvars_i_next_send = [grid.createPartitionOfINextSendBuffers(PVARS)](rgn_patches_pvars);
+    var patches_pvars_i_prev_recv = [grid.createPartitionOfIPrevRecvBuffers(PVARS)](rgn_patches_pvars);
+    var patches_pvars_i_next_recv = [grid.createPartitionOfINextRecvBuffers(PVARS)](rgn_patches_pvars);
+    var patches_pvars_j_prev_send = [grid.createPartitionOfJPrevSendBuffers(PVARS)](rgn_patches_pvars);
+    var patches_pvars_j_next_send = [grid.createPartitionOfJNextSendBuffers(PVARS)](rgn_patches_pvars);
+    var patches_pvars_j_prev_recv = [grid.createPartitionOfJPrevRecvBuffers(PVARS)](rgn_patches_pvars);
+    var patches_pvars_j_next_recv = [grid.createPartitionOfJNextRecvBuffers(PVARS)](rgn_patches_pvars);
+
+    var patches_cvars_0             = [grid.createPartitionOfFullPatches(CVARS)](rgn_patches_cvars_0); -- complete partition of rgn_patches_cvars_0
+    var patches_cvars_0_int         = [grid.createPartitionOfInteriorPatches (CVARS)](rgn_patches_cvars_0);
+    var patches_cvars_0_i_prev_send = [grid.createPartitionOfIPrevSendBuffers(CVARS)](rgn_patches_cvars_0);
+    var patches_cvars_0_i_next_send = [grid.createPartitionOfINextSendBuffers(CVARS)](rgn_patches_cvars_0);
+    var patches_cvars_0_i_prev_recv = [grid.createPartitionOfIPrevRecvBuffers(CVARS)](rgn_patches_cvars_0);
+    var patches_cvars_0_i_next_recv = [grid.createPartitionOfINextRecvBuffers(CVARS)](rgn_patches_cvars_0);
+    var patches_cvars_0_j_prev_send = [grid.createPartitionOfJPrevSendBuffers(CVARS)](rgn_patches_cvars_0);
+    var patches_cvars_0_j_next_send = [grid.createPartitionOfJNextSendBuffers(CVARS)](rgn_patches_cvars_0);
+    var patches_cvars_0_j_prev_recv = [grid.createPartitionOfJPrevRecvBuffers(CVARS)](rgn_patches_cvars_0);
+    var patches_cvars_0_j_next_recv = [grid.createPartitionOfJNextRecvBuffers(CVARS)](rgn_patches_cvars_0);
+
+    var patches_cvars_1             = [grid.createPartitionOfFullPatches(CVARS)](rgn_patches_cvars_1); -- complete partition of rgn_patches_cvars_1
+    var patches_cvars_1_int         = [grid.createPartitionOfInteriorPatches (CVARS)](rgn_patches_cvars_1);
+    var patches_cvars_1_i_prev_send = [grid.createPartitionOfIPrevSendBuffers(CVARS)](rgn_patches_cvars_1);
+    var patches_cvars_1_i_next_send = [grid.createPartitionOfINextSendBuffers(CVARS)](rgn_patches_cvars_1);
+    var patches_cvars_1_i_prev_recv = [grid.createPartitionOfIPrevRecvBuffers(CVARS)](rgn_patches_cvars_1);
+    var patches_cvars_1_i_next_recv = [grid.createPartitionOfINextRecvBuffers(CVARS)](rgn_patches_cvars_1);
+    var patches_cvars_1_j_prev_send = [grid.createPartitionOfJPrevSendBuffers(CVARS)](rgn_patches_cvars_1);
+    var patches_cvars_1_j_next_send = [grid.createPartitionOfJNextSendBuffers(CVARS)](rgn_patches_cvars_1);
+    var patches_cvars_1_j_prev_recv = [grid.createPartitionOfJPrevRecvBuffers(CVARS)](rgn_patches_cvars_1);
+    var patches_cvars_1_j_next_recv = [grid.createPartitionOfJNextRecvBuffers(CVARS)](rgn_patches_cvars_1);
+
+    var patches_cvars_2             = [grid.createPartitionOfFullPatches(CVARS)](rgn_patches_cvars_2); -- complete partition of rgn_patches_cvars_2
+    var patches_cvars_2_int         = [grid.createPartitionOfInteriorPatches (CVARS)](rgn_patches_cvars_2);
+    var patches_cvars_2_i_prev_send = [grid.createPartitionOfIPrevSendBuffers(CVARS)](rgn_patches_cvars_2);
+    var patches_cvars_2_i_next_send = [grid.createPartitionOfINextSendBuffers(CVARS)](rgn_patches_cvars_2);
+    var patches_cvars_2_i_prev_recv = [grid.createPartitionOfIPrevRecvBuffers(CVARS)](rgn_patches_cvars_2);
+    var patches_cvars_2_i_next_recv = [grid.createPartitionOfINextRecvBuffers(CVARS)](rgn_patches_cvars_2);
+    var patches_cvars_2_j_prev_send = [grid.createPartitionOfJPrevSendBuffers(CVARS)](rgn_patches_cvars_2);
+    var patches_cvars_2_j_next_send = [grid.createPartitionOfJNextSendBuffers(CVARS)](rgn_patches_cvars_2);
+    var patches_cvars_2_j_prev_recv = [grid.createPartitionOfJPrevRecvBuffers(CVARS)](rgn_patches_cvars_2);
+    var patches_cvars_2_j_next_recv = [grid.createPartitionOfJNextRecvBuffers(CVARS)](rgn_patches_cvars_2);
+
 
     -- INITIALIZE DATA PATCHES
     fill(rgn_patches_grid.x, 0);
     fill(rgn_patches_grid.y, 0);
 
+    -- INITIALIZE META PATCHES
+    fill(rgn_patches_meta.{level, i_coord, j_coord, i_prev, i_next, j_prev, j_next, parent}, 0);
+    fill(rgn_patches_meta.child[0], 0);
+    fill(rgn_patches_meta.{refine_req, coarsen_req}, false);
+    grid.metaGridInit(rgn_patches_meta, patches_meta);
+
     __demand(__index_launch)
-    for color =  0, num_base_patches_i * num_base_patches_j do
+    for color = 0, num_base_patches_i * num_base_patches_j do
        solver.setGridPointCoordinates(patches_grid[color], patches_meta[color])
+    end
+
+    -- INITIALIZE PVARS to get rid of warnings (write_discard not supported)
+    fill(rgn_patches_pvars.{rho, u, v, T, p}, 0.0);
+
+    __demand(__index_launch)
+    for color = 0, num_base_patches_i * num_base_patches_j do
+        problem_config.setInitialCondition(patches_grid[color], patches_meta[color], patches_pvars[color])
     end
 end
 
