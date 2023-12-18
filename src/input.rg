@@ -15,10 +15,10 @@ config.numerics_modules = "numerics"
 
 
 -- INPUTS FOR NAVIER-STOKES SOLVER MESH GENERATION --
-config.domain_length_x =  1.0 -- physical domain length in x-direction
-config.domain_length_y =  1.0 -- physical domain length in y-direction
-config.domain_shift_x  = -0.5 -- physical domain coordinate shift in x-direction (if no shift, the domain origin is at the lower-left corner of the domain)
-config.domain_shift_y  = -0.5 -- physical domain coordinate shift in y-direction (if no shift, the domain origin is at the lower-left corner of the domain)
+config.domain_length_x = 12.0 -- physical domain length in x-direction
+config.domain_length_y = 12.0 -- physical domain length in y-direction
+config.domain_shift_x  = -6.0 -- physical domain coordinate shift in x-direction (if no shift, the domain origin is at the lower-left corner of the domain)
+config.domain_shift_y  = -6.0 -- physical domain coordinate shift in y-direction (if no shift, the domain origin is at the lower-left corner of the domain)
 
 
 return config
