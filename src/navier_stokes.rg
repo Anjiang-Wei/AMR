@@ -138,9 +138,9 @@ task solver.main()
     fill(rgn_patches_grid.x, 0);
     fill(rgn_patches_grid.y, 0);
 
-    -- INITIALIZE META PATCHES
+    -- INITIALIZE META PATCHES to avoid warnings (write_discard not supported)
     fill(rgn_patches_meta.{level, i_coord, j_coord, i_prev, i_next, j_prev, j_next, parent}, 0);
-    fill(rgn_patches_meta.child[0], 0);
+    fill(rgn_patches_meta.child, [terralib.constant(`arrayof(int, 0, 0, 0, 0))]);
     fill(rgn_patches_meta.{refine_req, coarsen_req}, false);
     grid.metaGridInit(rgn_patches_meta, patches_meta);
 
