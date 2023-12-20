@@ -7,6 +7,7 @@ local string         = terralib.includec("string.h")
 local format         = require("std/format")
 local grid           = require("grid")
 local numerics       = require(usr_config.numerics_modules)
+local eos            = require("eos")
 require("fields")
 
 local domain_length_x         = usr_config.domain_length_x
@@ -49,6 +50,106 @@ do
 end
 
 
+-- Calculate velocity gradient tensor at collocated points
+local task calcGradVelColl(
+    grad_vel_coll_patch : region(ispace(int3d), GRAD_VEL),      -- patch that only contains the interior region
+    c_vars_now_patch    : region(ispace(int3d), CVARS),         -- patch including the halo layer on each side
+    meta_patch          : region(ispace(int1d), grid_meta_fsp)
+)
+where
+    writes(grad_vel_coll_patch),
+    reads(c_vars_now_patch.{mass, mmtx, mmty}, meta_patch)
+do
+    var level_fact  = pow2(meta_patch[0].level)    
+    var inv_dx : double = 1.0 / (domain_length_x / (num_grid_points_base_i * level_fact));
+    var inv_dy : double = 1.0 / (domain_length_y / (num_grid_points_base_j * level_fact));
+    var stencil_buf_u : double[numerics.stencil_width];
+    var stencil_buf_v : double[numerics.stencil_width];
+    var stencil_idx_shift : int = (numerics.stencil_width - 1) / 2;
+    for cij in grad_vel_coll_patch.ispace do
+        for m = 0, numerics.stencil_width do
+            var cij_shifted : int3d = int3d({cij.x, cij.y + m - stencil_idx_shift, cij.z});
+            stencil_buf_u[m] = c_vars_now_patch[cij_shifted].mmtx / c_vars_now_patch[cij_shifted].mass;
+            stencil_buf_v[m] = c_vars_now_patch[cij_shifted].mmty / c_vars_now_patch[cij_shifted].mass;
+        end
+        grad_vel_coll_patch[cij].dudx = numerics.der1Coll(stencil_buf_u[0], stencil_buf_u[1], stencil_buf_u[2], stencil_buf_u[3], stencil_buf_u[4], inv_dx);
+        grad_vel_coll_patch[cij].dvdx = numerics.der1Coll(stencil_buf_v[0], stencil_buf_v[1], stencil_buf_v[2], stencil_buf_v[3], stencil_buf_v[4], inv_dx);
+
+        for m = 0, numerics.stencil_width do
+            var cij_shifted : int3d = int3d({cij.x, cij.y, cij.z + m - stencil_idx_shift});
+            stencil_buf_u[m] = c_vars_now_patch[cij_shifted].mmtx / c_vars_now_patch[cij_shifted].mass;
+            stencil_buf_v[m] = c_vars_now_patch[cij_shifted].mmty / c_vars_now_patch[cij_shifted].mass;
+        end
+        grad_vel_coll_patch[cij].dudy = numerics.der1Coll(stencil_buf_u[0], stencil_buf_u[1], stencil_buf_u[2], stencil_buf_u[3], stencil_buf_u[4], inv_dy);
+        grad_vel_coll_patch[cij].dvdy = numerics.der1Coll(stencil_buf_v[0], stencil_buf_v[1], stencil_buf_v[2], stencil_buf_v[3], stencil_buf_v[4], inv_dy);
+    end
+end
+
+
+local struct PrimitiveVars {
+    u : double,
+    v : double,
+    T : double,
+    p : double
+}
+
+local terra conservativeToPrimitive (rho : double, rho_u : double, rho_v : double, rho_e : double) : PrimitiveVars
+    var pvars : PrimitiveVars;
+    pvars.u = rho_u / rho;
+    pvars.v = rho_v / rho;
+    pvars.T = ((rho_e / rho) - 0.5 * (pvars.u * pvars.u + pvars.v * pvars.v)) / eos.Rg * (eos.gamma - 1.0);
+    pvars.p = rho * eos.Rg * pvars.T;
+    return pvars;
+end 
+
+-- Calculate the right-hand side of the NS equations
+local task calcRHS(
+    c_vars_ddt_patch : region(ispace(int3d), CVARS),     -- patch that only contains the interior region
+    c_vars_now_patch : region(ispace(int3d), CVARS),     -- patch including the halo layer on each side
+    grid_patch       : region(ispace(int3d), grid_fsp)   -- patch including the halo layer on each side
+)
+where
+    writes(c_vars_ddt_patch),
+    reads (c_vars_now_patch, grid_patch)
+do
+
+    var    u_coll : double [numerics.stencil_width_ext];
+    var    v_coll : double [numerics.stencil_width_ext];
+    var    T_coll : double [numerics.stencil_width_ext];
+    var    p_coll : double [numerics.stencil_width    ];
+    var dudx_coll : double [numerics.stencil_width    ];
+    var dudy_coll : double [numerics.stencil_width    ];
+    var dvdx_coll : double [numerics.stencil_width    ];
+    var dvdy_coll : double [numerics.stencil_width    ];
+
+    var flux_mass : double [numerics.stencil_width];
+    var flux_mmtx : double [numerics.stencil_width];
+    var flux_mmty : double [numerics.stencil_width];
+    var flux_enrg : double [numerics.stencil_width];
+
+    var stencil_ctr     : int = (numerics.stencil_width     - 1) / 2;
+    var stencil_ext_ctr : int = (numerics.stencil_width_ext - 1) / 2;
+    for cij in c_vars_ddt_patch.ispace do
+        -----------------------
+        -- ASSEMBLE X-FLUXES --
+        -----------------------
+        for i = 0, numerics.stencil_width_ext do
+            var cij_shifted : int3d = int3d({cij.x, cij.y - stencil_ext_ctr + i, cij.z});
+            var pvars : PrmitiveVars = conservativeToPrimitive(c_vars_now_patch[cij_shifted].mass, c_vars_now_patch[cij_shifted].mmtx, c_vars_now_patch[cij_shifted].mmty, c_vars_now_patch[cij_shifted].enrg);
+            u_coll[i] = pvars.u;
+            v_coll[i] = pvars.v;
+            T_coll[i] = pvars.T;
+            p_coll[i] = pvars.p;
+        end
+
+        -----------------------
+        -- ASSEMBLE Y-FLUXES --
+        -----------------------
+
+    end
+
+end
+
 
 task solver.main()
     c.printf("Solver initialization:")
@@ -62,15 +163,11 @@ task solver.main()
     var color_space  = [grid.createColorSpace()];
 
     -- region(ispace(int3d, {grid.num_patches_max, grid.full_patch_size, grid.full_patch_size}, {0, grid.idx_min, grid.idx_min}), grid_fsp)
-    var rgn_patches_grid = [grid.createDataRegion(grid_fsp)];
-
-    var rgn_patches_pvars = [grid.createDataRegion(PVARS)];
-
-    var rgn_patches_cvars_0 = [grid.createDataRegion(CVARS)];
-
-    var rgn_patches_cvars_1 = [grid.createDataRegion(CVARS)];
-
-    var rgn_patches_cvars_2 = [grid.createDataRegion(CVARS)];
+    var rgn_patches_grid     = [grid.createDataRegion(grid_fsp)];
+    var rgn_patches_grad_vel = [grid.createDataRegion(GRAD_VEL)];
+    var rgn_patches_cvars_0  = [grid.createDataRegion(CVARS)];
+    var rgn_patches_cvars_1  = [grid.createDataRegion(CVARS)];
+    var rgn_patches_cvars_2  = [grid.createDataRegion(CVARS)];
 
     -- region(ispace(int1d, grid.num_patches_max, 0), grid_meta_fsp)
     var rgn_patches_meta = [grid.createMetaRegion()];
@@ -78,7 +175,7 @@ task solver.main()
 
     -- CREATE PARTITIONS
     var patches_meta             = grid.createPartitionOfMetaPatches(rgn_patches_meta); -- complete partition of rgn_patches_meta
-    var patches_grid             = [grid.createPartitionOfFullPatches(grid_fsp)](rgn_patches_grid); -- complete partition of rgn_patches_grid
+    var patches_grid             = [grid.createPartitionOfFullPatches     (grid_fsp)](rgn_patches_grid); -- complete partition of rgn_patches_grid
     var patches_grid_int         = [grid.createPartitionOfInteriorPatches (grid_fsp)](rgn_patches_grid);
     var patches_grid_i_prev_send = [grid.createPartitionOfIPrevSendBuffers(grid_fsp)](rgn_patches_grid);
     var patches_grid_i_next_send = [grid.createPartitionOfINextSendBuffers(grid_fsp)](rgn_patches_grid);
@@ -89,18 +186,18 @@ task solver.main()
     var patches_grid_j_prev_recv = [grid.createPartitionOfJPrevRecvBuffers(grid_fsp)](rgn_patches_grid);
     var patches_grid_j_next_recv = [grid.createPartitionOfJNextRecvBuffers(grid_fsp)](rgn_patches_grid);
 
-    var patches_pvars             = [grid.createPartitionOfFullPatches(PVARS)](rgn_patches_pvars); -- complete partition of rgn_patches_pvars
-    var patches_pvars_int         = [grid.createPartitionOfInteriorPatches (PVARS)](rgn_patches_pvars);
-    var patches_pvars_i_prev_send = [grid.createPartitionOfIPrevSendBuffers(PVARS)](rgn_patches_pvars);
-    var patches_pvars_i_next_send = [grid.createPartitionOfINextSendBuffers(PVARS)](rgn_patches_pvars);
-    var patches_pvars_i_prev_recv = [grid.createPartitionOfIPrevRecvBuffers(PVARS)](rgn_patches_pvars);
-    var patches_pvars_i_next_recv = [grid.createPartitionOfINextRecvBuffers(PVARS)](rgn_patches_pvars);
-    var patches_pvars_j_prev_send = [grid.createPartitionOfJPrevSendBuffers(PVARS)](rgn_patches_pvars);
-    var patches_pvars_j_next_send = [grid.createPartitionOfJNextSendBuffers(PVARS)](rgn_patches_pvars);
-    var patches_pvars_j_prev_recv = [grid.createPartitionOfJPrevRecvBuffers(PVARS)](rgn_patches_pvars);
-    var patches_pvars_j_next_recv = [grid.createPartitionOfJNextRecvBuffers(PVARS)](rgn_patches_pvars);
+    var patches_grad_vel             = [grid.createPartitionOfFullPatches     (GRAD_VEL)](rgn_patches_grad_vel); -- complete partition of rgn_patches_grad_vel
+    var patches_grad_vel_int         = [grid.createPartitionOfInteriorPatches (GRAD_VEL)](rgn_patches_grad_vel);
+    var patches_grad_vel_i_prev_send = [grid.createPartitionOfIPrevSendBuffers(GRAD_VEL)](rgn_patches_grad_vel);
+    var patches_grad_vel_i_next_send = [grid.createPartitionOfINextSendBuffers(GRAD_VEL)](rgn_patches_grad_vel);
+    var patches_grad_vel_i_prev_recv = [grid.createPartitionOfIPrevRecvBuffers(GRAD_VEL)](rgn_patches_grad_vel);
+    var patches_grad_vel_i_next_recv = [grid.createPartitionOfINextRecvBuffers(GRAD_VEL)](rgn_patches_grad_vel);
+    var patches_grad_vel_j_prev_send = [grid.createPartitionOfJPrevSendBuffers(GRAD_VEL)](rgn_patches_grad_vel);
+    var patches_grad_vel_j_next_send = [grid.createPartitionOfJNextSendBuffers(GRAD_VEL)](rgn_patches_grad_vel);
+    var patches_grad_vel_j_prev_recv = [grid.createPartitionOfJPrevRecvBuffers(GRAD_VEL)](rgn_patches_grad_vel);
+    var patches_grad_vel_j_next_recv = [grid.createPartitionOfJNextRecvBuffers(GRAD_VEL)](rgn_patches_grad_vel);
 
-    var patches_cvars_0             = [grid.createPartitionOfFullPatches(CVARS)](rgn_patches_cvars_0); -- complete partition of rgn_patches_cvars_0
+    var patches_cvars_0             = [grid.createPartitionOfFullPatches     (CVARS)](rgn_patches_cvars_0); -- complete partition of rgn_patches_cvars_0
     var patches_cvars_0_int         = [grid.createPartitionOfInteriorPatches (CVARS)](rgn_patches_cvars_0);
     var patches_cvars_0_i_prev_send = [grid.createPartitionOfIPrevSendBuffers(CVARS)](rgn_patches_cvars_0);
     var patches_cvars_0_i_next_send = [grid.createPartitionOfINextSendBuffers(CVARS)](rgn_patches_cvars_0);
@@ -111,7 +208,7 @@ task solver.main()
     var patches_cvars_0_j_prev_recv = [grid.createPartitionOfJPrevRecvBuffers(CVARS)](rgn_patches_cvars_0);
     var patches_cvars_0_j_next_recv = [grid.createPartitionOfJNextRecvBuffers(CVARS)](rgn_patches_cvars_0);
 
-    var patches_cvars_1             = [grid.createPartitionOfFullPatches(CVARS)](rgn_patches_cvars_1); -- complete partition of rgn_patches_cvars_1
+    var patches_cvars_1             = [grid.createPartitionOfFullPatches     (CVARS)](rgn_patches_cvars_1); -- complete partition of rgn_patches_cvars_1
     var patches_cvars_1_int         = [grid.createPartitionOfInteriorPatches (CVARS)](rgn_patches_cvars_1);
     var patches_cvars_1_i_prev_send = [grid.createPartitionOfIPrevSendBuffers(CVARS)](rgn_patches_cvars_1);
     var patches_cvars_1_i_next_send = [grid.createPartitionOfINextSendBuffers(CVARS)](rgn_patches_cvars_1);
@@ -150,11 +247,11 @@ task solver.main()
     end
 
     -- INITIALIZE PVARS to get rid of warnings (write_discard not supported)
-    fill(rgn_patches_pvars.{rho, u, v, T, p}, 0.0);
+    fill(rgn_patches_grad_vel.{dudx, dudy, dvdx, dvdy}, 0.0);
 
     __demand(__index_launch)
     for color = 0, num_base_patches_i * num_base_patches_j do
-        problem_config.setInitialCondition(patches_grid[color], patches_meta[color], patches_pvars[color])
+        problem_config.setInitialCondition(patches_grid[color], patches_meta[color], patches_cvars_0[color])
     end
 end
 

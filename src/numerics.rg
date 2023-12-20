@@ -2,6 +2,10 @@ import "regent"
 
 local numerics = {}
 
+numerics.stencil_width     = 5;
+numerics.stencil_width_ext = 9;
+
+
 -- Collocated first derivative operator
 --     x[i-2]   x[i-1]   x[i]     x[i+1]   x[i+2]
 --       o--------o--------o--------o--------o

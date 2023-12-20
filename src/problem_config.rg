@@ -21,7 +21,7 @@ local isen = 1.0 / (eos.gamma - 1.0);
 task problem_config.setInitialCondition(
     grid_patch : region(ispace(int3d), grid_fsp),
     meta_patch : region(ispace(int1d), grid_meta_fsp),
-    data_patch : region(ispace(int3d), PVARS)
+    data_patch : region(ispace(int3d), CVARS)
 )
 where
     reads (grid_patch, meta_patch),
@@ -30,10 +30,15 @@ do
     for cij in grid_patch.ispace do
         var r : double = cmath.sqrt(grid_patch[cij].x * grid_patch[cij].x + grid_patch[cij].y * grid_patch[cij].y);
         var G : double = cmath.exp(alp * (1.0 - r * r));
-        data_patch[cij].u   = U0 + r * eps * G * ( grid_patch[cij].y) / (r + double(r*r < 1e-30));
-        data_patch[cij].v   =      r * eps * G * (-grid_patch[cij].x) / (r + double(r*r < 1e-30));
-        data_patch[cij].T   = T0 - AT * G * G;
-        data_patch[cij].rho = cmath.pow(1.0 - AT * G * G / T0, isen);
+        var u   : double = U0 + r * eps * G * ( grid_patch[cij].y) / (r + double(r*r < 1e-30));
+        var v   : double =      r * eps * G * (-grid_patch[cij].x) / (r + double(r*r < 1e-30));
+        var T   : double = T0 - AT * G * G;
+        var rho : double = cmath.pow(1.0 - AT * G * G / T0, isen);
+
+        data_patch[cij].mass = rho;
+        data_patch[cij].mmtx = rho * u;
+        data_patch[cij].mmty = rho * v;
+        data_patch[cij].enrg = rho * (eos.Rg / (eos.gamma - 1.0) * T + 0.5 * (u * u + v * v));
     end
 end
 
