@@ -8,6 +8,7 @@ local format         = require("std/format")
 local grid           = require("grid")
 local numerics       = require(usr_config.numerics_modules)
 local eos            = require("eos")
+local trans          = require("transport")
 require("fields")
 
 local domain_length_x         = usr_config.domain_length_x
@@ -38,7 +39,7 @@ where
     reads (meta_patch.{i_coord, j_coord, level}),
     writes (grid_patch)
 do
-    var level_fact  = pow2(meta_patch[0].level)
+    var level_fact  = pow2(meta_patch[meta_patch.bounds.lo].level)
     var dx : double = domain_length_x / (num_grid_points_base_i * level_fact)
     var dy : double = domain_length_y / (num_grid_points_base_j * level_fact)
     var x_start = meta_patch[0].i_coord * patch_size * dx + domain_shift_x;
@@ -51,38 +52,38 @@ end
 
 
 -- Calculate velocity gradient tensor at collocated points
-local task calcGradVelColl(
+task solver.calcGradVelColl(
     grad_vel_coll_patch : region(ispace(int3d), GRAD_VEL),      -- patch that only contains the interior region
     c_vars_now_patch    : region(ispace(int3d), CVARS),         -- patch including the halo layer on each side
     meta_patch          : region(ispace(int1d), grid_meta_fsp)
 )
 where
     writes(grad_vel_coll_patch),
-    reads(c_vars_now_patch.{mass, mmtx, mmty}, meta_patch)
+    reads(c_vars_now_patch.{mass, mmtx, mmty, enrg}, meta_patch.{level})
 do
-    var level_fact  = pow2(meta_patch[0].level)    
-    var inv_dx : double = 1.0 / (domain_length_x / (num_grid_points_base_i * level_fact));
-    var inv_dy : double = 1.0 / (domain_length_y / (num_grid_points_base_j * level_fact));
-    var stencil_buf_u : double[numerics.stencil_width];
-    var stencil_buf_v : double[numerics.stencil_width];
-    var stencil_idx_shift : int = (numerics.stencil_width - 1) / 2;
-    for cij in grad_vel_coll_patch.ispace do
-        for m = 0, numerics.stencil_width do
-            var cij_shifted : int3d = int3d({cij.x, cij.y + m - stencil_idx_shift, cij.z});
-            stencil_buf_u[m] = c_vars_now_patch[cij_shifted].mmtx / c_vars_now_patch[cij_shifted].mass;
-            stencil_buf_v[m] = c_vars_now_patch[cij_shifted].mmty / c_vars_now_patch[cij_shifted].mass;
-        end
-        grad_vel_coll_patch[cij].dudx = numerics.der1Coll(stencil_buf_u[0], stencil_buf_u[1], stencil_buf_u[2], stencil_buf_u[3], stencil_buf_u[4], inv_dx);
-        grad_vel_coll_patch[cij].dvdx = numerics.der1Coll(stencil_buf_v[0], stencil_buf_v[1], stencil_buf_v[2], stencil_buf_v[3], stencil_buf_v[4], inv_dx);
+    -- var level_fact  = pow2(meta_patch[meta_patch.bounds.lo].level)    
+    -- var inv_dx : double = 1.0 / (domain_length_x / (num_grid_points_base_i * level_fact));
+    -- var inv_dy : double = 1.0 / (domain_length_y / (num_grid_points_base_j * level_fact));
+    -- var stencil_buf_u : double[numerics.stencil_width];
+    -- var stencil_buf_v : double[numerics.stencil_width];
+    -- var stencil_idx_shift : int = (numerics.stencil_width - 1) / 2;
+    -- for cij in grad_vel_coll_patch.ispace do
+    --     for m = 0, numerics.stencil_width do
+    --         var cij_shifted : int3d = int3d({cij.x, cij.y + m - stencil_idx_shift, cij.z});
+    --         stencil_buf_u[m] = c_vars_now_patch[cij_shifted].mmtx / c_vars_now_patch[cij_shifted].mass;
+    --         stencil_buf_v[m] = c_vars_now_patch[cij_shifted].mmty / c_vars_now_patch[cij_shifted].mass;
+    --     end
+    --     grad_vel_coll_patch[cij].dudx = numerics.der1Coll(stencil_buf_u[0], stencil_buf_u[1], stencil_buf_u[2], stencil_buf_u[3], stencil_buf_u[4], inv_dx);
+    --     grad_vel_coll_patch[cij].dvdx = numerics.der1Coll(stencil_buf_v[0], stencil_buf_v[1], stencil_buf_v[2], stencil_buf_v[3], stencil_buf_v[4], inv_dx);
 
-        for m = 0, numerics.stencil_width do
-            var cij_shifted : int3d = int3d({cij.x, cij.y, cij.z + m - stencil_idx_shift});
-            stencil_buf_u[m] = c_vars_now_patch[cij_shifted].mmtx / c_vars_now_patch[cij_shifted].mass;
-            stencil_buf_v[m] = c_vars_now_patch[cij_shifted].mmty / c_vars_now_patch[cij_shifted].mass;
-        end
-        grad_vel_coll_patch[cij].dudy = numerics.der1Coll(stencil_buf_u[0], stencil_buf_u[1], stencil_buf_u[2], stencil_buf_u[3], stencil_buf_u[4], inv_dy);
-        grad_vel_coll_patch[cij].dvdy = numerics.der1Coll(stencil_buf_v[0], stencil_buf_v[1], stencil_buf_v[2], stencil_buf_v[3], stencil_buf_v[4], inv_dy);
-    end
+    --     for m = 0, numerics.stencil_width do
+    --         var cij_shifted : int3d = int3d({cij.x, cij.y, cij.z + m - stencil_idx_shift});
+    --         stencil_buf_u[m] = c_vars_now_patch[cij_shifted].mmtx / c_vars_now_patch[cij_shifted].mass;
+    --         stencil_buf_v[m] = c_vars_now_patch[cij_shifted].mmty / c_vars_now_patch[cij_shifted].mass;
+    --     end
+    --     grad_vel_coll_patch[cij].dudy = numerics.der1Coll(stencil_buf_u[0], stencil_buf_u[1], stencil_buf_u[2], stencil_buf_u[3], stencil_buf_u[4], inv_dy);
+    --     grad_vel_coll_patch[cij].dvdy = numerics.der1Coll(stencil_buf_v[0], stencil_buf_v[1], stencil_buf_v[2], stencil_buf_v[3], stencil_buf_v[4], inv_dy);
+    -- end
 end
 
 
@@ -103,50 +104,87 @@ local terra conservativeToPrimitive (rho : double, rho_u : double, rho_v : doubl
 end 
 
 -- Calculate the right-hand side of the NS equations
-local task calcRHS(
-    c_vars_ddt_patch : region(ispace(int3d), CVARS),     -- patch that only contains the interior region
-    c_vars_now_patch : region(ispace(int3d), CVARS),     -- patch including the halo layer on each side
-    grid_patch       : region(ispace(int3d), grid_fsp)   -- patch including the halo layer on each side
+task solver.calcRHS(
+    c_vars_ddt_patch    : region(ispace(int3d), CVARS   ),     -- patch that only contains the interior region
+    c_vars_now_patch    : region(ispace(int3d), CVARS   ),     -- patch including the halo layer on each side
+    grad_vel_coll_patch : region(ispace(int3d), GRAD_VEL),     -- patch including the halo layer on each side
+    grid_patch          : region(ispace(int3d), grid_fsp),     -- patch including the halo layer on each side
+    meta_patch          : region(ispace(int1d), grid_meta_fsp)
 )
 where
     writes(c_vars_ddt_patch),
-    reads (c_vars_now_patch, grid_patch)
+    reads (c_vars_now_patch, grad_vel_coll_patch, grid_patch, meta_patch.level)
 do
 
-    var    u_coll : double [numerics.stencil_width_ext];
-    var    v_coll : double [numerics.stencil_width_ext];
-    var    T_coll : double [numerics.stencil_width_ext];
-    var    p_coll : double [numerics.stencil_width    ];
-    var dudx_coll : double [numerics.stencil_width    ];
-    var dudy_coll : double [numerics.stencil_width    ];
-    var dvdx_coll : double [numerics.stencil_width    ];
-    var dvdy_coll : double [numerics.stencil_width    ];
+    -- var    u_coll : double [numerics.stencil_width_ext];
+    -- var    v_coll : double [numerics.stencil_width_ext];
+    -- var    T_coll : double [numerics.stencil_width_ext];
+    -- var    p_coll : double [numerics.stencil_width_ext];
+    -- var dudx_coll : double [numerics.stencil_width_ext];
+    -- var dudy_coll : double [numerics.stencil_width_ext];
+    -- var dvdx_coll : double [numerics.stencil_width_ext];
+    -- var dvdy_coll : double [numerics.stencil_width_ext];
 
-    var flux_mass : double [numerics.stencil_width];
-    var flux_mmtx : double [numerics.stencil_width];
-    var flux_mmty : double [numerics.stencil_width];
-    var flux_enrg : double [numerics.stencil_width];
+    -- var flux_mass : double [numerics.stencil_width - 1];
+    -- var flux_mmtx : double [numerics.stencil_width - 1];
+    -- var flux_mmty : double [numerics.stencil_width - 1];
+    -- var flux_enrg : double [numerics.stencil_width - 1];
 
-    var stencil_ctr     : int = (numerics.stencil_width     - 1) / 2;
-    var stencil_ext_ctr : int = (numerics.stencil_width_ext - 1) / 2;
-    for cij in c_vars_ddt_patch.ispace do
-        -----------------------
-        -- ASSEMBLE X-FLUXES --
-        -----------------------
-        for i = 0, numerics.stencil_width_ext do
-            var cij_shifted : int3d = int3d({cij.x, cij.y - stencil_ext_ctr + i, cij.z});
-            var pvars : PrmitiveVars = conservativeToPrimitive(c_vars_now_patch[cij_shifted].mass, c_vars_now_patch[cij_shifted].mmtx, c_vars_now_patch[cij_shifted].mmty, c_vars_now_patch[cij_shifted].enrg);
-            u_coll[i] = pvars.u;
-            v_coll[i] = pvars.v;
-            T_coll[i] = pvars.T;
-            p_coll[i] = pvars.p;
-        end
+    -- var stencil_ctr        : int = (numerics.stencil_width     - 1) / 2;
+    -- var stencil_ext_ctr    : int = (numerics.stencil_width_ext - 1) / 2;
+    -- var stencil_coll_shift : int = stencil_ext_ctr - stencil_ctr;
 
-        -----------------------
-        -- ASSEMBLE Y-FLUXES --
-        -----------------------
+    -- var level_fact  = pow2(meta_patch[meta_patch.bounds.lo].level)    
+    -- var inv_dx : double = 1.0 / (domain_length_x / (num_grid_points_base_i * level_fact));
+    -- var inv_dy : double = 1.0 / (domain_length_y / (num_grid_points_base_j * level_fact));
 
-    end
+    -- for cij in c_vars_ddt_patch.ispace do
+    --     -----------------------
+    --     -- ASSEMBLE X-FLUXES --
+    --     -----------------------
+    --     for i = 0, numerics.stencil_width_ext do
+    --         var cij_shifted : int3d = int3d({cij.x, cij.y - stencil_ext_ctr + i, cij.z});
+    --         var pvars : PrimitiveVars = conservativeToPrimitive(c_vars_now_patch[cij_shifted].mass, c_vars_now_patch[cij_shifted].mmtx, c_vars_now_patch[cij_shifted].mmty, c_vars_now_patch[cij_shifted].enrg);
+    --         u_coll[i] = pvars.u;
+    --         v_coll[i] = pvars.v;
+    --         T_coll[i] = pvars.T;
+    --         p_coll[i] = pvars.p;
+    --         dudy_coll[i] = grad_vel_coll_patch[cij_shifted].dudy
+    --         dvdy_coll[i] = grad_vel_coll_patch[cij_shifted].dvdy
+    --     end
+
+    --     for i = 0, (numerics.stencil_width - 1) do
+    --         var i_coll : int = i + stencil_coll_shift;
+    --         var u : double = numerics.midInterp(u_coll[i_coll - 1], u_coll[i_coll], u_coll[i_coll + 1], u_coll[i_coll + 2]);
+    --         var v : double = numerics.midInterp(v_coll[i_coll - 1], v_coll[i_coll], v_coll[i_coll + 1], v_coll[i_coll + 2]);
+    --         var T : double = numerics.midInterp(T_coll[i_coll - 1], T_coll[i_coll], T_coll[i_coll + 1], T_coll[i_coll + 2]);
+    --         var p : double = numerics.midInterp(p_coll[i_coll - 1], p_coll[i_coll], p_coll[i_coll + 1], p_coll[i_coll + 2]);
+
+    --         var dudx : double = numerics.der1Stag (u_coll[i_coll - 1], u_coll[i_coll], u_coll[i_coll + 1], u_coll[i_coll + 2], inv_dx);
+    --         var dvdx : double = numerics.der1Stag (v_coll[i_coll - 1], v_coll[i_coll], v_coll[i_coll + 1], v_coll[i_coll + 2], inv_dx);
+    --         var dTdx : double = numerics.der1Stag (T_coll[i_coll - 1], T_coll[i_coll], T_coll[i_coll + 1], T_coll[i_coll + 2], inv_dx);
+    --         var dudy : double = numerics.midInterp(u_coll[i_coll - 1], u_coll[i_coll], u_coll[i_coll + 1], u_coll[i_coll + 2]);
+    --         var dvdy : double = numerics.midInterp(v_coll[i_coll - 1], v_coll[i_coll], v_coll[i_coll + 1], v_coll[i_coll + 2]);
+
+    --         var rho : double = p / (eos.Rg * T);
+    --         var mu  : double = trans.calcDynVisc(T, p);
+    --         var kap : double = trans.calcThermCond(T, p);
+    --         var H   : double = rho * (eos.calcInternalEnergy(T, p) + 0.5 * (u * u + v * v)) + p;
+    --         var st11: double = 2.0 * mu *  dudx - (2.0/3.0) * mu * (dudx + dvdy);
+    --         var st12: double = 2.0 * mu * (dvdx + dudy);
+
+    --         flux_mass[i] = -rho * u;
+    --         flux_mmtx[i] = -rho * u * u - p + st11;
+    --         flux_mmty[i] = -rho * v * u     + st12;
+    --         flux_enrg[i] = -p * u + u * st11 + v * st12 + kap * dTdx;
+
+    --     end
+
+    --     -----------------------
+    --     -- ASSEMBLE Y-FLUXES --
+    --     -----------------------
+
+    -- end -- for cij in c_vars_ddt_patch.ispace 
 
 end
 
@@ -232,8 +270,7 @@ task solver.main()
 
 
     -- INITIALIZE DATA PATCHES
-    fill(rgn_patches_grid.x, 0);
-    fill(rgn_patches_grid.y, 0);
+    fill(rgn_patches_grid.{x, y}, 0.0);
 
     -- INITIALIZE META PATCHES to avoid warnings (write_discard not supported)
     fill(rgn_patches_meta.{level, i_coord, j_coord, i_prev, i_next, j_prev, j_next, parent}, 0);
@@ -241,18 +278,36 @@ task solver.main()
     fill(rgn_patches_meta.{refine_req, coarsen_req}, false);
     grid.metaGridInit(rgn_patches_meta, patches_meta);
 
+    fill(rgn_patches_cvars_0.{mass, mmtx, mmty, enrg}, 0.0);
+    fill(rgn_patches_cvars_1.{mass, mmtx, mmty, enrg}, 0.0);
+    fill(rgn_patches_cvars_2.{mass, mmtx, mmty, enrg}, 0.0);
+
     __demand(__index_launch)
     for color = 0, num_base_patches_i * num_base_patches_j do
        solver.setGridPointCoordinates(patches_grid[color], patches_meta[color])
     end
 
-    -- INITIALIZE PVARS to get rid of warnings (write_discard not supported)
+    -- INITIALIZE GRAD_VEL to get rid of warnings (write_discard not supported)
     fill(rgn_patches_grad_vel.{dudx, dudy, dvdx, dvdy}, 0.0);
 
     __demand(__index_launch)
     for color = 0, num_base_patches_i * num_base_patches_j do
         problem_config.setInitialCondition(patches_grid[color], patches_meta[color], patches_cvars_0[color])
     end
+
+
+    for pid in patches_meta.colors do
+        if ((patches_meta[pid][pid].level > (-1))) then
+        --if (true) then
+            problem_config.setInitialCondition(patches_grid[pid], patches_meta[pid], patches_cvars_0[pid]);
+            c.printf("Color = %d\n", int(pid));
+        --     -- solver.calcGradVelColl(patches_grad_vel_int[color], patches_cvars_0[color], patches_meta[color]);
+        --     solver.calcRHS(patches_cvars_1_int[pid], patches_cvars_0[pid], patches_grad_vel[pid], patches_grid[pid], patches_meta[pid]);
+        end
+        --solver.calcRHS(patches_cvars_1_int[color], patches_cvars_0[color], patches_grad_vel[color], patches_grid[color], patches_meta[color]);
+    end
+
+
 end
 
 
