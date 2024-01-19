@@ -206,6 +206,317 @@ do
 end
 
 
+-- Compute algebraic operations in SSP-RK3 scheme
+function SSPRK3Stage(dt, stage)
+    if      stage == 0 then
+        -- u1 = u0 + u1 * dt
+        local task ssprk3Stage(
+            u0 : region(ispace(int3d), CVARS),
+            u1 : region(ispace(int3d), CVARS)
+        )
+        where
+            reads (u0, u1),
+            writes(u1)
+        do
+            var offset_0 = u0.bounds.lo - u1.bounds.lo;
+            for cij in u1.ispace do
+                u1[cij].mass = u0[cij + offset_0].mass + u1[cij].mass * dt
+                u1[cij].mmtx = u0[cij + offset_0].mmtx + u1[cij].mmtx * dt
+                u1[cij].mmty = u0[cij + offset_0].mmty + u1[cij].mmty * dt
+                u1[cij].enrg = u0[cij + offset_0].enrg + u1[cij].enrg * dt
+            end
+        end
+        return ssprk3Stage
+    elseif stage == 1 then
+        -- u2 = 0.75 * u0 + 0.25 * u1 + 0.25 * dt * u2
+        local task ssprk3Stage(
+            u0 : region(ispace(int3d), CVARS),
+            u1 : region(ispace(int3d), CVARS),
+            u2 : region(ispace(int3d), CVARS)
+        )
+        where
+            reads (u0, u1, u2),
+            writes(u2)
+        do
+            var offset_0 = u0.bounds.lo - u2.bounds.lo
+            var offset_1 = u1.bounds.lo - u2.bounds.lo
+            for cij in u1.ispace do
+                u2[cij].mass = 0.75 * u0[cij + offset_0].mass + 0.25 * (u1[cij + offset_1].mass + u2[cij].mass * dt)
+                u2[cij].mmtx = 0.75 * u0[cij + offset_0].mmtx + 0.25 * (u1[cij + offset_1].mmtx + u2[cij].mmtx * dt)
+                u2[cij].mmty = 0.75 * u0[cij + offset_0].mmty + 0.25 * (u1[cij + offset_1].mmty + u2[cij].mmty * dt)
+                u2[cij].enrg = 0.75 * u0[cij + offset_0].enrg + 0.25 * (u1[cij + offset_1].enrg + u2[cij].enrg * dt)
+            end
+        end
+        return ssprk3Stage
+    elseif stage == 2 then
+        -- u0 = (1/3) * u0 + (2/3) * u2 + (2/3) * u1 * dt 
+        local task ssprk3Stage(
+            u0 : region(ispace(int3d), CVARS),
+            u1 : region(ispace(int3d), CVARS),
+            u2 : region(ispace(int3d), CVARS)
+        )
+        where
+            reads(u0, u1, u2),
+            writes(u0)
+        do
+            var offset_1 = u1.bounds.lo - u0.bounds.lo
+            var offset_2 = u2.bounds.lo - u0.bounds.lo
+            for cij in u0.ispace do
+                u0[cij].mass = (1.0/3.0) * u0[cij].mass + (2.0/3.0) * (u2[cij + offset_2].mass + u1[cij + offset_1].mass * dt)
+                u0[cij].mmtx = (1.0/3.0) * u0[cij].mmtx + (2.0/3.0) * (u2[cij + offset_2].mmtx + u1[cij + offset_1].mmtx * dt)
+                u0[cij].mmty = (1.0/3.0) * u0[cij].mmty + (2.0/3.0) * (u2[cij + offset_2].mmty + u1[cij + offset_1].mmty * dt)
+                u0[cij].enrg = (1.0/3.0) * u0[cij].enrg + (2.0/3.0) * (u2[cij + offset_2].enrg + u1[cij + offset_1].enrg * dt)
+            end
+        end
+        return ssprk3Stage
+    end
+end
+
+
+
+-- Conduct RK3 update
+function solver.SSPRK3Launch(dt)
+    local
+    task SSPRK3Task(
+        rgn_cvars_0                     : region(ispace(int3d), CVARS   ),
+        rgn_cvars_1                     : region(ispace(int3d), CVARS   ),
+        rgn_cvars_2                     : region(ispace(int3d), CVARS   ),
+        rgn_grad_vel_coll               : region(ispace(int3d), GRAD_VEL),
+        rgn_grid                        : region(ispace(int3d), grid_fsp),    
+        rgn_meta                        : region(ispace(int1d), grid_meta_fsp),
+        --
+        part_cvars_0_int                : partition(disjoint, rgn_cvars_0, ispace(int1d)),
+        part_cvars_0_all                : partition(disjoint, rgn_cvars_0, ispace(int1d)),
+        part_cvars_0_i_prev_send        : partition(disjoint, rgn_cvars_0, ispace(int1d)),
+        part_cvars_0_i_next_send        : partition(disjoint, rgn_cvars_0, ispace(int1d)),
+        part_cvars_0_j_prev_send        : partition(disjoint, rgn_cvars_0, ispace(int1d)),
+        part_cvars_0_j_next_send        : partition(disjoint, rgn_cvars_0, ispace(int1d)),
+        part_cvars_0_i_prev_recv        : partition(disjoint, rgn_cvars_0, ispace(int1d)),
+        part_cvars_0_i_next_recv        : partition(disjoint, rgn_cvars_0, ispace(int1d)),
+        part_cvars_0_j_prev_recv        : partition(disjoint, rgn_cvars_0, ispace(int1d)),
+        part_cvars_0_j_next_recv        : partition(disjoint, rgn_cvars_0, ispace(int1d)),
+        --
+        part_cvars_1_int                : partition(disjoint, rgn_cvars_1, ispace(int1d)),
+        part_cvars_1_all                : partition(disjoint, rgn_cvars_1, ispace(int1d)),
+        part_cvars_1_i_prev_send        : partition(disjoint, rgn_cvars_1, ispace(int1d)),
+        part_cvars_1_i_next_send        : partition(disjoint, rgn_cvars_1, ispace(int1d)),
+        part_cvars_1_j_prev_send        : partition(disjoint, rgn_cvars_1, ispace(int1d)),
+        part_cvars_1_j_next_send        : partition(disjoint, rgn_cvars_1, ispace(int1d)),
+        part_cvars_1_i_prev_recv        : partition(disjoint, rgn_cvars_1, ispace(int1d)),
+        part_cvars_1_i_next_recv        : partition(disjoint, rgn_cvars_1, ispace(int1d)),
+        part_cvars_1_j_prev_recv        : partition(disjoint, rgn_cvars_1, ispace(int1d)),
+        part_cvars_1_j_next_recv        : partition(disjoint, rgn_cvars_1, ispace(int1d)),
+        --
+        part_cvars_2_int                : partition(disjoint, rgn_cvars_2, ispace(int1d)),
+        part_cvars_2_all                : partition(disjoint, rgn_cvars_2, ispace(int1d)),
+        part_cvars_2_i_prev_send        : partition(disjoint, rgn_cvars_2, ispace(int1d)),
+        part_cvars_2_i_next_send        : partition(disjoint, rgn_cvars_2, ispace(int1d)),
+        part_cvars_2_j_prev_send        : partition(disjoint, rgn_cvars_2, ispace(int1d)),
+        part_cvars_2_j_next_send        : partition(disjoint, rgn_cvars_2, ispace(int1d)),
+        part_cvars_2_i_prev_recv        : partition(disjoint, rgn_cvars_2, ispace(int1d)),
+        part_cvars_2_i_next_recv        : partition(disjoint, rgn_cvars_2, ispace(int1d)),
+        part_cvars_2_j_prev_recv        : partition(disjoint, rgn_cvars_2, ispace(int1d)),
+        part_cvars_2_j_next_recv        : partition(disjoint, rgn_cvars_2, ispace(int1d)),
+        --
+        part_grad_vel_coll_int          : partition(disjoint, rgn_grad_vel_coll, ispace(int1d)),
+        part_grad_vel_coll_all          : partition(disjoint, rgn_grad_vel_coll, ispace(int1d)),
+        part_grad_vel_coll_i_prev_send  : partition(disjoint, rgn_grad_vel_coll, ispace(int1d)),
+        part_grad_vel_coll_i_next_send  : partition(disjoint, rgn_grad_vel_coll, ispace(int1d)),
+        part_grad_vel_coll_j_prev_send  : partition(disjoint, rgn_grad_vel_coll, ispace(int1d)),
+        part_grad_vel_coll_j_next_send  : partition(disjoint, rgn_grad_vel_coll, ispace(int1d)),
+        part_grad_vel_coll_i_prev_recv  : partition(disjoint, rgn_grad_vel_coll, ispace(int1d)),
+        part_grad_vel_coll_i_next_recv  : partition(disjoint, rgn_grad_vel_coll, ispace(int1d)),
+        part_grad_vel_coll_j_prev_recv  : partition(disjoint, rgn_grad_vel_coll, ispace(int1d)),
+        part_grad_vel_coll_j_next_recv  : partition(disjoint, rgn_grad_vel_coll, ispace(int1d)),
+        --
+        part_grid                       : partition(disjoint, rgn_grid, ispace(int1d)),
+        part_meta                       : partition(disjoint, rgn_meta, ispace(int1d))
+    )
+    where
+        reads writes(rgn_cvars_0, rgn_cvars_1, rgn_cvars_2, rgn_grad_vel_coll),
+        reads(rgn_grid, rgn_meta)
+    do
+
+        -- Stage 0
+        solver.calcRHSLaunch(
+            rgn_cvars_1, rgn_cvars_0, rgn_grad_vel_coll, rgn_grid, rgn_meta, part_cvars_1_int,
+            part_cvars_0_int,
+            part_cvars_0_all,
+            part_cvars_0_i_prev_send,
+            part_cvars_0_i_next_send,
+            part_cvars_0_j_prev_send,
+            part_cvars_0_j_next_send,
+            part_cvars_0_i_prev_recv,
+            part_cvars_0_i_next_recv,
+            part_cvars_0_j_prev_recv,
+            part_cvars_0_j_next_recv,
+            part_grad_vel_coll_int,
+            part_grad_vel_coll_all,
+            part_grad_vel_coll_i_prev_send,
+            part_grad_vel_coll_i_next_send,
+            part_grad_vel_coll_j_prev_send,
+            part_grad_vel_coll_j_next_send,
+            part_grad_vel_coll_i_prev_recv,
+            part_grad_vel_coll_i_next_recv,
+            part_grad_vel_coll_j_prev_recv,
+            part_grad_vel_coll_j_next_recv,
+            part_grid, part_meta
+        )
+        for color in part_meta.colors do
+            var pid = int1d(color);
+            if (part_meta[color][color].level > (-1)) then
+                [SSPRK3Stage(dt, 0)](part_cvars_0_int[pid], part_cvars_1_int[pid]);
+            end
+        end
+
+        -- Stage 1
+        solver.calcRHSLaunch(
+            rgn_cvars_2, rgn_cvars_1, rgn_grad_vel_coll, rgn_grid, rgn_meta, part_cvars_2_int,
+            part_cvars_1_int,
+            part_cvars_1_all,
+            part_cvars_1_i_prev_send,
+            part_cvars_1_i_next_send,
+            part_cvars_1_j_prev_send,
+            part_cvars_1_j_next_send,
+            part_cvars_1_i_prev_recv,
+            part_cvars_1_i_next_recv,
+            part_cvars_1_j_prev_recv,
+            part_cvars_1_j_next_recv,
+            part_grad_vel_coll_int,
+            part_grad_vel_coll_all,
+            part_grad_vel_coll_i_prev_send,
+            part_grad_vel_coll_i_next_send,
+            part_grad_vel_coll_j_prev_send,
+            part_grad_vel_coll_j_next_send,
+            part_grad_vel_coll_i_prev_recv,
+            part_grad_vel_coll_i_next_recv,
+            part_grad_vel_coll_j_prev_recv,
+            part_grad_vel_coll_j_next_recv,
+            part_grid, part_meta
+        )
+        for color in part_meta.colors do
+            var pid = int1d(color);
+            if (part_meta[color][color].level > (-1)) then
+                [SSPRK3Stage(dt, 1)](part_cvars_0_int[pid], part_cvars_1_int[pid], part_cvars_2_int[pid]);
+            end
+        end
+
+        -- Stage 2
+        solver.calcRHSLaunch(
+            rgn_cvars_1, rgn_cvars_2, rgn_grad_vel_coll, rgn_grid, rgn_meta, part_cvars_1_int,
+            part_cvars_2_int,
+            part_cvars_2_all,
+            part_cvars_2_i_prev_send,
+            part_cvars_2_i_next_send,
+            part_cvars_2_j_prev_send,
+            part_cvars_2_j_next_send,
+            part_cvars_2_i_prev_recv,
+            part_cvars_2_i_next_recv,
+            part_cvars_2_j_prev_recv,
+            part_cvars_2_j_next_recv,
+            part_grad_vel_coll_int,
+            part_grad_vel_coll_all,
+            part_grad_vel_coll_i_prev_send,
+            part_grad_vel_coll_i_next_send,
+            part_grad_vel_coll_j_prev_send,
+            part_grad_vel_coll_j_next_send,
+            part_grad_vel_coll_i_prev_recv,
+            part_grad_vel_coll_i_next_recv,
+            part_grad_vel_coll_j_prev_recv,
+            part_grad_vel_coll_j_next_recv,
+            part_grid, part_meta
+        )
+        -- for color in part_meta.colors do
+        --     var pid = int1d(color);
+        --     if (part_meta[color][color].level > (-1)) then
+        --         [SSPRK3Stage(dt, 2)](part_cvars_0_int[pid], part_cvars_1_int[pid], part_cvars_2_int[pid]);
+        --     end
+        -- end
+
+
+    end
+    return SSPRK3Task
+end
+
+
+
+-- Inner task RHS
+task solver.calcRHSLaunch(
+     rgn_cvars_ddt                   : region(ispace(int3d), CVARS   ),
+     rgn_cvars_now                   : region(ispace(int3d), CVARS   ),
+     rgn_grad_vel_coll               : region(ispace(int3d), GRAD_VEL),
+     rgn_grid                        : region(ispace(int3d), grid_fsp),    
+     rgn_meta                        : region(ispace(int1d), grid_meta_fsp),
+     --
+     part_cvars_ddt_int              : partition(disjoint, rgn_cvars_ddt, ispace(int1d)),
+     --
+     part_cvars_now_int              : partition(disjoint, rgn_cvars_now, ispace(int1d)),
+     part_cvars_now_all              : partition(disjoint, rgn_cvars_now, ispace(int1d)),
+     part_cvars_now_i_prev_send      : partition(disjoint, rgn_cvars_now, ispace(int1d)),
+     part_cvars_now_i_next_send      : partition(disjoint, rgn_cvars_now, ispace(int1d)),
+     part_cvars_now_j_prev_send      : partition(disjoint, rgn_cvars_now, ispace(int1d)),
+     part_cvars_now_j_next_send      : partition(disjoint, rgn_cvars_now, ispace(int1d)),
+     part_cvars_now_i_prev_recv      : partition(disjoint, rgn_cvars_now, ispace(int1d)),
+     part_cvars_now_i_next_recv      : partition(disjoint, rgn_cvars_now, ispace(int1d)),
+     part_cvars_now_j_prev_recv      : partition(disjoint, rgn_cvars_now, ispace(int1d)),
+     part_cvars_now_j_next_recv      : partition(disjoint, rgn_cvars_now, ispace(int1d)),
+     --
+     part_grad_vel_coll_int          : partition(disjoint, rgn_grad_vel_coll, ispace(int1d)),
+     part_grad_vel_coll_all          : partition(disjoint, rgn_grad_vel_coll, ispace(int1d)),
+     part_grad_vel_coll_i_prev_send  : partition(disjoint, rgn_grad_vel_coll, ispace(int1d)),
+     part_grad_vel_coll_i_next_send  : partition(disjoint, rgn_grad_vel_coll, ispace(int1d)),
+     part_grad_vel_coll_j_prev_send  : partition(disjoint, rgn_grad_vel_coll, ispace(int1d)),
+     part_grad_vel_coll_j_next_send  : partition(disjoint, rgn_grad_vel_coll, ispace(int1d)),
+     part_grad_vel_coll_i_prev_recv  : partition(disjoint, rgn_grad_vel_coll, ispace(int1d)),
+     part_grad_vel_coll_i_next_recv  : partition(disjoint, rgn_grad_vel_coll, ispace(int1d)),
+     part_grad_vel_coll_j_prev_recv  : partition(disjoint, rgn_grad_vel_coll, ispace(int1d)),
+     part_grad_vel_coll_j_next_recv  : partition(disjoint, rgn_grad_vel_coll, ispace(int1d)),
+     --
+     part_grid                       : partition(disjoint, rgn_grid, ispace(int1d)),
+     part_meta                       : partition(disjoint, rgn_meta, ispace(int1d))
+)
+where
+    writes(rgn_cvars_ddt),
+    reads(rgn_grid, rgn_meta),
+    reads writes(rgn_cvars_now, rgn_grad_vel_coll)
+do
+    [grid.fillGhosts(CVARS)](
+        rgn_meta, part_meta, rgn_cvars_now,
+        part_cvars_now_i_prev_send,
+        part_cvars_now_i_next_send,
+        part_cvars_now_j_prev_send,
+        part_cvars_now_j_next_send,
+        part_cvars_now_i_prev_recv,
+        part_cvars_now_i_next_recv,
+        part_cvars_now_j_prev_recv,
+        part_cvars_now_j_next_recv
+    );
+    for color in part_meta.colors do
+        var pid = int1d(color);
+        if (part_meta[color][color].level > (-1)) then
+            solver.calcGradVelColl(part_grad_vel_coll_int[pid], part_cvars_now_all[pid], part_meta[pid]);
+        end
+    end
+    [grid.fillGhosts(GRAD_VEL)](
+        rgn_meta, part_meta, rgn_grad_vel_coll,
+        part_grad_vel_coll_i_prev_send,
+        part_grad_vel_coll_i_next_send,
+        part_grad_vel_coll_j_prev_send,
+        part_grad_vel_coll_j_next_send,
+        part_grad_vel_coll_i_prev_recv,
+        part_grad_vel_coll_i_next_recv,
+        part_grad_vel_coll_j_prev_recv,
+        part_grad_vel_coll_j_next_recv
+    );
+    for color in part_meta.colors do
+        var pid = int1d(color);
+        if (part_meta[color][color].level > (-1)) then
+            solver.calcRHSLeaf(part_cvars_ddt_int[pid], part_cvars_now_all[pid], part_grad_vel_coll_all[pid], part_grid[pid], part_meta[pid]);
+        end
+    end
+end
+
+
 task solver.main()
     c.printf("Solver initialization:")
     c.printf("  -- Patch size (interior) : %d x %d\n", grid.patch_size, grid.patch_size)
@@ -325,313 +636,70 @@ task solver.main()
     -- end
 
 
-    for pid in patches_meta.colors do
-        if ((patches_meta[pid][pid].level > (-1))) then
-            solver.calcGradVelColl(patches_grad_vel_int[int1d(pid)], patches_cvars_0[int1d(pid)], patches_meta[int1d(pid)]);
-            solver.calcRHSLeaf(patches_cvars_1_int[int1d(pid)], patches_cvars_0[int1d(pid)], patches_grad_vel[int1d(pid)], patches_grid[int1d(pid)], patches_meta[int1d(pid)]);
-        end
-    end
+    -- for pid in patches_meta.colors do
+    --     if ((patches_meta[pid][pid].level > (-1))) then
+    --         solver.calcGradVelColl(patches_grad_vel_int[int1d(pid)], patches_cvars_0[int1d(pid)], patches_meta[int1d(pid)]);
+    --         solver.calcRHSLeaf(patches_cvars_1_int[int1d(pid)], patches_cvars_0[int1d(pid)], patches_grad_vel[int1d(pid)], patches_grid[int1d(pid)], patches_meta[int1d(pid)]);
+    --     end
+    -- end
+    -- for i = 0, 10 do
+        [solver.SSPRK3Launch(0.001)](
+            rgn_patches_cvars_0,
+            rgn_patches_cvars_1,
+            rgn_patches_cvars_2,
+            rgn_patches_grad_vel,
+            rgn_patches_grid,
+            rgn_patches_meta,
+            -- 
+            patches_cvars_0_int,
+            patches_cvars_0,
+            patches_cvars_0_i_prev_send,
+            patches_cvars_0_i_next_send,
+            patches_cvars_0_j_prev_send,
+            patches_cvars_0_j_next_send,
+            patches_cvars_0_i_prev_recv,
+            patches_cvars_0_i_next_recv,
+            patches_cvars_0_j_prev_recv,
+            patches_cvars_0_j_next_recv,
+            --
+            patches_cvars_1_int,
+            patches_cvars_1,
+            patches_cvars_1_i_prev_send,
+            patches_cvars_1_i_next_send,
+            patches_cvars_1_j_prev_send,
+            patches_cvars_1_j_next_send,
+            patches_cvars_1_i_prev_recv,
+            patches_cvars_1_i_next_recv,
+            patches_cvars_1_j_prev_recv,
+            patches_cvars_1_j_next_recv,
+            --
+            patches_cvars_2_int,
+            patches_cvars_2,
+            patches_cvars_2_i_prev_send,
+            patches_cvars_2_i_next_send,
+            patches_cvars_2_j_prev_send,
+            patches_cvars_2_j_next_send,
+            patches_cvars_2_i_prev_recv,
+            patches_cvars_2_i_next_recv,
+            patches_cvars_2_j_prev_recv,
+            patches_cvars_2_j_next_recv,
+            --
+            patches_grad_vel_int,
+            patches_grad_vel,
+            patches_grad_vel_i_prev_send,
+            patches_grad_vel_i_next_send,
+            patches_grad_vel_j_prev_send,
+            patches_grad_vel_j_next_send,
+            patches_grad_vel_i_prev_recv,
+            patches_grad_vel_i_next_recv,
+            patches_grad_vel_j_prev_recv,
+            patches_grad_vel_j_next_recv,
+            --
+            patches_grid,
+            patches_meta
+        );
+    -- end
 
-end
-
-
--- Inner task RHS
-task solver.calcRHSLaunch(
-     rgn_cvars_ddt                   : region(ispace(int3d), CVARS   ),
-     rgn_cvars_now                   : region(ispace(int3d), CVARS   ),
-     rgn_grad_vel_coll               : region(ispace(int3d), GRAD_VEL),
-     rgn_grid                        : region(ispace(int3d), grid_fsp),    
-     rgn_meta                        : region(ispace(int1d), grid_meta_fsp),
-     --
-     part_cvars_ddt_int              : partition(disjoint, rgn_cvars_ddt, ispace(int1d)),
-     --
-     part_cvars_now_int              : partition(disjoint, rgn_cvars_now, ispace(int1d)),
-     part_cvars_now_all              : partition(disjoint, rgn_cvars_now, ispace(int1d)),
-     part_cvars_now_i_prev_send      : partition(disjoint, rgn_cvars_now, ispace(int1d)),
-     part_cvars_now_i_next_send      : partition(disjoint, rgn_cvars_now, ispace(int1d)),
-     part_cvars_now_j_prev_send      : partition(disjoint, rgn_cvars_now, ispace(int1d)),
-     part_cvars_now_j_next_send      : partition(disjoint, rgn_cvars_now, ispace(int1d)),
-     part_cvars_now_i_prev_recv      : partition(disjoint, rgn_cvars_now, ispace(int1d)),
-     part_cvars_now_i_next_recv      : partition(disjoint, rgn_cvars_now, ispace(int1d)),
-     part_cvars_now_j_prev_recv      : partition(disjoint, rgn_cvars_now, ispace(int1d)),
-     part_cvars_now_j_next_recv      : partition(disjoint, rgn_cvars_now, ispace(int1d)),
-     --
-     part_grad_vel_coll_int          : partition(disjoint, rgn_grad_vel_coll, ispace(int1d)),
-     part_grad_vel_coll_all          : partition(disjoint, rgn_grad_vel_coll, ispace(int1d)),
-     part_grad_vel_coll_i_prev_send  : partition(disjoint, rgn_grad_vel_coll, ispace(int1d)),
-     part_grad_vel_coll_i_next_send  : partition(disjoint, rgn_grad_vel_coll, ispace(int1d)),
-     part_grad_vel_coll_j_prev_send  : partition(disjoint, rgn_grad_vel_coll, ispace(int1d)),
-     part_grad_vel_coll_j_next_send  : partition(disjoint, rgn_grad_vel_coll, ispace(int1d)),
-     part_grad_vel_coll_i_prev_recv  : partition(disjoint, rgn_grad_vel_coll, ispace(int1d)),
-     part_grad_vel_coll_i_next_recv  : partition(disjoint, rgn_grad_vel_coll, ispace(int1d)),
-     part_grad_vel_coll_j_prev_recv  : partition(disjoint, rgn_grad_vel_coll, ispace(int1d)),
-     part_grad_vel_coll_j_next_recv  : partition(disjoint, rgn_grad_vel_coll, ispace(int1d)),
-     --
-     part_grid                       : partition(disjoint, rgn_grid, ispace(int1d)),
-     part_meta                       : partition(disjoint, rgn_meta, ispace(int1d))
-)
-where
-    writes(rgn_cvars_ddt),
-    reads(rgn_grid, rgn_meta),
-    reads writes(rgn_cvars_now, rgn_grad_vel_coll)
-do
-    [grid.fillGhosts(CVARS)](
-        rgn_meta, part_meta, rgn_cvars_now,
-        part_cvars_now_i_prev_send,
-        part_cvars_now_i_next_send,
-        part_cvars_now_j_prev_send,
-        part_cvars_now_j_next_send,
-        part_cvars_now_i_prev_recv,
-        part_cvars_now_i_next_recv,
-        part_cvars_now_j_prev_recv,
-        part_cvars_now_j_next_recv
-    );
-    for color in part_meta.colors do
-        var pid = int1d(color);
-        if (part_meta[color][color].level > (-1)) then
-            solver.calcGradVelColl(part_grad_vel_coll_int[pid], part_cvars_now_all[pid], part_meta[pid]);
-        end
-    end
-    [grid.fillGhosts(GRAD_VEL)](
-        rgn_meta, part_meta, rgn_grad_vel_coll,
-        part_grad_vel_coll_i_prev_send,
-        part_grad_vel_coll_i_next_send,
-        part_grad_vel_coll_j_prev_send,
-        part_grad_vel_coll_j_next_send,
-        part_grad_vel_coll_i_prev_recv,
-        part_grad_vel_coll_i_next_recv,
-        part_grad_vel_coll_j_prev_recv,
-        part_grad_vel_coll_j_next_recv
-    );
-    for color in part_meta.colors do
-        var pid = int1d(color);
-        if (part_meta[color][color].level > (-1)) then
-            solver.calcRHSLeaf(part_cvars_ddt_int[pid], part_cvars_now_all[pid], part_grad_vel_coll_all[pid], part_grid[pid], part_meta[pid]);
-        end
-    end
-end
-
-
--- Compute algebraic operations in SSP-RK3 scheme
-function SSPRK3Stage(fsp, dt, stage)
-    if      stage == 0 then
-        -- u1 = u0 + u1 * dt
-        local task ssprk3Stage(
-            u0 : region(int3d, fsp),
-            u1 : region(int3d, fsp)
-        )
-        where
-            reads (u0, u1),
-            writes(u1)
-        do
-            var offset_0 = u0.bounds.lo - u1.bounds.lo
-            for cij in u1.ispace do
-                u1[cij] = u0[cij + offset_0] + u1[cij] * dt
-            end
-        end
-    elseif stage == 1 then
-        -- u2 = 0.75 * u0 + 0.25 * u1 + 0.25 * dt * u2
-        local task ssprk3Stage(
-            u0 : region(int3d, fsp),
-            u1 : region(int3d, fsp),
-            u2 : region(int3d, fsp)
-        )
-        where
-            reads (u0, u1, u2),
-            writes(u2)
-        do
-            var offset_0 = u0.bounds.lo - u2.bounds.lo
-            var offset_1 = u1.bounds.lo - u2.bounds.lo
-            for cij in u1.ispace do
-                u2[cij] = 0.75 * u0[cij + offset_0] + 0.25 * (u1[cij + offset_1] + u2[cij] * dt)
-            end
-        end
-    elseif stage == 2 then
-        -- u0 = (1/3) * u0 + (2/3) * u2 + (2/3) * u1 * dt 
-        local task ssprk3Stage(
-            u0 : region(int3d, fsp),
-            u1 : region(int3d, fsp),
-            u2 : region(int3d, fsp)
-        )
-        where
-            reads(u0, u1, u2),
-            writes(u0)
-        do
-            var offset_1 = u1.bounds.lo - u0.bounds.lo
-            var offset_2 = u2.bounds.lo - u0.bounds.lo
-            for cij in u0.ispace do
-                u0[cij] = (1.0/3.0) * u0[cij] + (2.0/3.0) * (u2[cij + offset_2] + u1[cij + offset_1] * dt)
-            end
-        end
-    end
-
-    return ssprk3Stage
-end
-
-
-
--- Conduct RK3 update
-function solver.SSP3Launch(dt)
-    local
-    task SSPRK3Task(
-        rgn_cvars_0                     : region(ispace(int3d), CVARS   ),
-        rgn_cvars_1                     : region(ispace(int3d), CVARS   ),
-        rgn_cvars_2                     : region(ispace(int3d), CVARS   ),
-        rgn_grad_vel_coll               : region(ispace(int3d), GRAD_VEL),
-        rgn_grid                        : region(ispace(int3d), grid_fsp),    
-        rgn_meta                        : region(ispace(int1d), grid_meta_fsp),
-        --
-        part_cvars_0_int                : partition(disjoint, rgn_cvars_now, ispace(int1d)),
-        part_cvars_0_all                : partition(disjoint, rgn_cvars_now, ispace(int1d)),
-        part_cvars_0_i_prev_send        : partition(disjoint, rgn_cvars_now, ispace(int1d)),
-        part_cvars_0_i_next_send        : partition(disjoint, rgn_cvars_now, ispace(int1d)),
-        part_cvars_0_j_prev_send        : partition(disjoint, rgn_cvars_now, ispace(int1d)),
-        part_cvars_0_j_next_send        : partition(disjoint, rgn_cvars_now, ispace(int1d)),
-        part_cvars_0_i_prev_recv        : partition(disjoint, rgn_cvars_now, ispace(int1d)),
-        part_cvars_0_i_next_recv        : partition(disjoint, rgn_cvars_now, ispace(int1d)),
-        part_cvars_0_j_prev_recv        : partition(disjoint, rgn_cvars_now, ispace(int1d)),
-        part_cvars_0_j_next_recv        : partition(disjoint, rgn_cvars_now, ispace(int1d)),
-        --
-        part_cvars_1_int                : partition(disjoint, rgn_cvars_now, ispace(int1d)),
-        part_cvars_1_all                : partition(disjoint, rgn_cvars_now, ispace(int1d)),
-        part_cvars_1_i_prev_send        : partition(disjoint, rgn_cvars_now, ispace(int1d)),
-        part_cvars_1_i_next_send        : partition(disjoint, rgn_cvars_now, ispace(int1d)),
-        part_cvars_1_j_prev_send        : partition(disjoint, rgn_cvars_now, ispace(int1d)),
-        part_cvars_1_j_next_send        : partition(disjoint, rgn_cvars_now, ispace(int1d)),
-        part_cvars_1_i_prev_recv        : partition(disjoint, rgn_cvars_now, ispace(int1d)),
-        part_cvars_1_i_next_recv        : partition(disjoint, rgn_cvars_now, ispace(int1d)),
-        part_cvars_1_j_prev_recv        : partition(disjoint, rgn_cvars_now, ispace(int1d)),
-        part_cvars_1_j_next_recv        : partition(disjoint, rgn_cvars_now, ispace(int1d)),
-        --
-        part_cvars_2_int                : partition(disjoint, rgn_cvars_now, ispace(int1d)),
-        part_cvars_2_all                : partition(disjoint, rgn_cvars_now, ispace(int1d)),
-        part_cvars_2_i_prev_send        : partition(disjoint, rgn_cvars_now, ispace(int1d)),
-        part_cvars_2_i_next_send        : partition(disjoint, rgn_cvars_now, ispace(int1d)),
-        part_cvars_2_j_prev_send        : partition(disjoint, rgn_cvars_now, ispace(int1d)),
-        part_cvars_2_j_next_send        : partition(disjoint, rgn_cvars_now, ispace(int1d)),
-        part_cvars_2_i_prev_recv        : partition(disjoint, rgn_cvars_now, ispace(int1d)),
-        part_cvars_2_i_next_recv        : partition(disjoint, rgn_cvars_now, ispace(int1d)),
-        part_cvars_2_j_prev_recv        : partition(disjoint, rgn_cvars_now, ispace(int1d)),
-        part_cvars_2_j_next_recv        : partition(disjoint, rgn_cvars_now, ispace(int1d)),
-        --
-        part_grad_vel_coll_int          : partition(disjoint, rgn_grad_vel_coll, ispace(int1d)),
-        part_grad_vel_coll_all          : partition(disjoint, rgn_grad_vel_coll, ispace(int1d)),
-        part_grad_vel_coll_i_prev_send  : partition(disjoint, rgn_grad_vel_coll, ispace(int1d)),
-        part_grad_vel_coll_i_next_send  : partition(disjoint, rgn_grad_vel_coll, ispace(int1d)),
-        part_grad_vel_coll_j_prev_send  : partition(disjoint, rgn_grad_vel_coll, ispace(int1d)),
-        part_grad_vel_coll_j_next_send  : partition(disjoint, rgn_grad_vel_coll, ispace(int1d)),
-        part_grad_vel_coll_i_prev_recv  : partition(disjoint, rgn_grad_vel_coll, ispace(int1d)),
-        part_grad_vel_coll_i_next_recv  : partition(disjoint, rgn_grad_vel_coll, ispace(int1d)),
-        part_grad_vel_coll_j_prev_recv  : partition(disjoint, rgn_grad_vel_coll, ispace(int1d)),
-        part_grad_vel_coll_j_next_recv  : partition(disjoint, rgn_grad_vel_coll, ispace(int1d)),
-        --
-        part_grid                       : partition(disjoint, rgn_grid, ispace(int1d)),
-        part_meta                       : partition(disjoint, rgn_meta, ispace(int1d))
-    )
-    where
-        reads writes(rgn_cvars_0, rgn_cvars_1, rgn_cvars_2, rgn_grad_vel_coll),
-        reads(rgn_grid, rgn_meta)
-    do
-
-        -- Stage 0
-        solver.calcRHSLaunch(
-            rgn_cvars_1, rgn_cvars_0, rgn_grad_vel_coll, rgn_grid, rgn_meta, part_cvars_1_int,
-            part_cvars_0_int,
-            part_cvars_0_all,
-            part_cvars_0_i_prev_send,
-            part_cvars_0_i_next_send,
-            part_cvars_0_j_prev_send,
-            part_cvars_0_j_next_send,
-            part_cvars_0_i_prev_recv,
-            part_cvars_0_i_next_recv,
-            part_cvars_0_j_prev_recv,
-            part_cvars_0_j_next_recv,
-            part_grad_vel_coll_int,
-            part_grad_vel_coll_all,
-            part_grad_vel_coll_i_prev_send,
-            part_grad_vel_coll_i_next_send,
-            part_grad_vel_coll_j_prev_send,
-            part_grad_vel_coll_j_next_send,
-            part_grad_vel_coll_i_prev_recv,
-            part_grad_vel_coll_i_next_recv,
-            part_grad_vel_coll_j_prev_recv,
-            part_grad_vel_coll_j_next_recv,
-            part_grid, part_meta
-        )
-        for color in part_meta.colors do
-            var pid = int1d(color);
-            if (part_meta[color][color].level > (-1)) then
-                [SSPRK3Stage(CVARS, dt, 0)](part_cvars_0_int[pid], part_cvars_1_int[pid]);
-            end
-        end
-
-        -- Stage 1
-        solver.calcRHSLaunch(
-            rgn_cvars_2, rgn_cvars_1, rgn_grad_vel_coll, rgn_grid, rgn_meta, part_cvars_2_int,
-            part_cvars_1_int,
-            part_cvars_1_all,
-            part_cvars_1_i_prev_send,
-            part_cvars_1_i_next_send,
-            part_cvars_1_j_prev_send,
-            part_cvars_1_j_next_send,
-            part_cvars_1_i_prev_recv,
-            part_cvars_1_i_next_recv,
-            part_cvars_1_j_prev_recv,
-            part_cvars_1_j_next_recv,
-            part_grad_vel_coll_int,
-            part_grad_vel_coll_all,
-            part_grad_vel_coll_i_prev_send,
-            part_grad_vel_coll_i_next_send,
-            part_grad_vel_coll_j_prev_send,
-            part_grad_vel_coll_j_next_send,
-            part_grad_vel_coll_i_prev_recv,
-            part_grad_vel_coll_i_next_recv,
-            part_grad_vel_coll_j_prev_recv,
-            part_grad_vel_coll_j_next_recv,
-            part_grid, part_meta
-        )
-        for color in part_meta.colors do
-            var pid = int1d(color);
-            if (part_meta[color][color].level > (-1)) then
-                [SSPRK3Stage(CVARS, dt, 1)](part_cvars_0_int[pid], part_cvars_1_int[pid], part_cvars_2_int[pid]);
-            end
-        end
-
-        -- Stage 2
-        solver.calcRHSLaunch(
-            rgn_cvars_1, rgn_cvars_2, rgn_grad_vel_coll, rgn_grid, rgn_meta, part_cvars_1_int,
-            part_cvars_2_int,
-            part_cvars_2_all,
-            part_cvars_2_i_prev_send,
-            part_cvars_2_i_next_send,
-            part_cvars_2_j_prev_send,
-            part_cvars_2_j_next_send,
-            part_cvars_2_i_prev_recv,
-            part_cvars_2_i_next_recv,
-            part_cvars_2_j_prev_recv,
-            part_cvars_2_j_next_recv,
-            part_grad_vel_coll_int,
-            part_grad_vel_coll_all,
-            part_grad_vel_coll_i_prev_send,
-            part_grad_vel_coll_i_next_send,
-            part_grad_vel_coll_j_prev_send,
-            part_grad_vel_coll_j_next_send,
-            part_grad_vel_coll_i_prev_recv,
-            part_grad_vel_coll_i_next_recv,
-            part_grad_vel_coll_j_prev_recv,
-            part_grad_vel_coll_j_next_recv,
-            part_grid, part_meta
-        )
-        for color in part_meta.colors do
-            var pid = int1d(color);
-            if (part_meta[color][color].level > (-1)) then
-                [SSPRK3Stage(CVARS, dt, 2)](part_cvars_0_int[pid], part_cvars_1_int[pid], part_cvars_2_int[pid]);
-            end
-        end
-
-
-    end
-    return SSPRK3Task
 end
 
 
