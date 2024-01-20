@@ -642,7 +642,7 @@ task solver.main()
     --         solver.calcRHSLeaf(patches_cvars_1_int[int1d(pid)], patches_cvars_0[int1d(pid)], patches_grad_vel[int1d(pid)], patches_grid[int1d(pid)], patches_meta[int1d(pid)]);
     --     end
     -- end
-    -- for i = 0, 10 do
+    for i = 0, 10 do
         [solver.SSPRK3Launch(0.001)](
             rgn_patches_cvars_0,
             rgn_patches_cvars_1,
@@ -698,7 +698,7 @@ task solver.main()
             patches_grid,
             patches_meta
         );
-    -- end
+    end
 
 end
 

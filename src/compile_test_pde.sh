@@ -23,7 +23,7 @@ else
 fi
 
 
-OBJNAME=$TARGET regent.py $SRC_FILE \
+OBJNAME=$TARGET regent.py $SRC_FILE -fflow 0 \
     && echo "Compile completed."
 
 cd $CWD
