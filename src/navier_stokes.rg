@@ -40,10 +40,11 @@ where
     writes (grid_patch)
 do
     var level_fact  = pow2(meta_patch[meta_patch.bounds.lo].level)
-    var dx : double = domain_length_x / (num_grid_points_base_i * level_fact)
-    var dy : double = domain_length_y / (num_grid_points_base_j * level_fact)
-    var x_start = meta_patch[0].i_coord * patch_size * dx + domain_shift_x;
-    var y_start = meta_patch[0].j_coord * patch_size * dy + domain_shift_y;
+    var dx : double = double(domain_length_x) / (num_grid_points_base_i * level_fact)
+    var dy : double = double(domain_length_y) / (num_grid_points_base_j * level_fact)
+    var color       = meta_patch.bounds.lo;
+    var x_start: double = meta_patch[color].i_coord * patch_size * dx + domain_shift_x;
+    var y_start: double = meta_patch[color].j_coord * patch_size * dy + domain_shift_y;
     for cij in grid_patch.ispace do
         grid_patch[cij].x = x_start + dx * cij.y
         grid_patch[cij].y = y_start + dy * cij.z
@@ -516,6 +517,41 @@ do
     end
 end
 
+function dumpDensity(fname)
+    local task taskDump(
+        rgn_cvars      :  region(ispace(int3d), CVARS),
+        rgn_grid       :  region(ispace(int3d), grid_fsp),    
+        rgn_meta       :  region(ispace(int1d), grid_meta_fsp),
+        patches_cvars  :  partition(disjoint, rgn_cvars, ispace(int1d)),
+        patches_grid   :  partition(disjoint, rgn_grid, ispace(int1d))
+    )
+    where
+        reads (rgn_cvars.mass, rgn_grid.{x, y}, rgn_meta.{level,i_coord,j_coord})
+    do
+        var file = c.fopen(fname, "w")
+        c.fprintf(file, "%8s, %8s, %8s, %8s, %8s, %23s, %23s, %23s\n", "color_id", "patch_i", "patch_j", "local_i", "local_j", "x", "y", "density")
+        -- color_id (%8d), patch_i (%8d), patch_j (%8d), local_i (%8d), local_j (%8d), x (%23.16e), y (%23.16e), pressure (%23.16e)
+            -- c.fprintf(file, "%7s, %7s, %7s, %7s, %7s, %7s, %7s, %7s, %7s, %7s, %7s, %7s, %7s, %7s, %7s\n"
+        for pid in rgn_meta.ispace do
+            if rgn_meta[pid].level > -1 then
+                var cvars_patch = patches_cvars[pid]
+                var grid_patch = patches_grid[pid]
+                for cij in cvars_patch.ispace do
+                    var patch_i = rgn_meta[pid].i_coord
+                    var patch_j = rgn_meta[pid].j_coord
+                    var density = cvars_patch[cij].mass
+                    var x = grid_patch[cij].x
+                    var y = grid_patch[cij].y
+                    c.fprintf(file, "%8d, %8d, %8d, %8d, %8d, %23.16e, %23.16e, %23.16e\n",
+                                    int(pid), patch_i, patch_j, cij.y, cij.z, x, y, density)
+                end
+            end
+        end
+        c.fclose(file)
+    end
+    return taskDump
+end
+
 
 task solver.main()
     c.printf("Solver initialization:")
@@ -612,7 +648,7 @@ task solver.main()
 
     __demand(__index_launch)
     for color = 0, num_base_patches_i * num_base_patches_j do
-       solver.setGridPointCoordinates(patches_grid[color], patches_meta[color])
+       solver.setGridPointCoordinates(patches_grid_int[color], patches_meta[color])
     end
 
     -- INITIALIZE GRAD_VEL to get rid of warnings (write_discard not supported)
@@ -620,10 +656,10 @@ task solver.main()
 
     __demand(__index_launch)
     for color = 0, num_base_patches_i * num_base_patches_j do
-        problem_config.setInitialCondition(patches_grid[color], patches_meta[color], patches_cvars_0[color])
+        problem_config.setInitialCondition(patches_grid_int[color], patches_meta[color], patches_cvars_0_int[color])
     end
 
-
+    [dumpDensity("density_init.dat")](rgn_patches_cvars_0, rgn_patches_grid, rgn_patches_meta, patches_cvars_0_int, patches_grid_int);
     --
     --
     -- TODO: Recursively refine mesh to higher levels
@@ -642,7 +678,7 @@ task solver.main()
     --         solver.calcRHSLeaf(patches_cvars_1_int[int1d(pid)], patches_cvars_0[int1d(pid)], patches_grad_vel[int1d(pid)], patches_grid[int1d(pid)], patches_meta[int1d(pid)]);
     --     end
     -- end
-    for i = 0, 10 do
+    -- for i = 0, 10 do
         [solver.SSPRK3Launch(0.001)](
             rgn_patches_cvars_0,
             rgn_patches_cvars_1,
@@ -698,7 +734,7 @@ task solver.main()
             patches_grid,
             patches_meta
         );
-    end
+    -- end
 
 end
 
