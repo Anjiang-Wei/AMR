@@ -63,8 +63,8 @@ where
     reads(c_vars_now_patch.{mass, mmtx, mmty, enrg}, meta_patch.{level})
 do
     var level_fact  = pow2(meta_patch[meta_patch.bounds.lo].level)    
-    var inv_dx : double = 1.0 / (domain_length_x / (num_grid_points_base_i * level_fact));
-    var inv_dy : double = 1.0 / (domain_length_y / (num_grid_points_base_j * level_fact));
+    var inv_dx : double = 1.0 / (double(domain_length_x) / (num_grid_points_base_i * level_fact));
+    var inv_dy : double = 1.0 / (double(domain_length_y) / (num_grid_points_base_j * level_fact));
     var stencil_buf_u : double[numerics.stencil_width];
     var stencil_buf_v : double[numerics.stencil_width];
     var stencil_idx_shift : int = (numerics.stencil_width - 1) / 2;
@@ -153,8 +153,8 @@ do
     var stencil_coll_shift : int = stencil_ext_ctr - stencil_ctr;
 
     var level_fact  = pow2(meta_patch[meta_patch.bounds.lo].level)    
-    var inv_dx : double = 1.0 / (domain_length_x / (num_grid_points_base_i * level_fact));
-    var inv_dy : double = 1.0 / (domain_length_y / (num_grid_points_base_j * level_fact));
+    var inv_dx : double = 1.0 / (double(domain_length_x) / (num_grid_points_base_i * level_fact));
+    var inv_dy : double = 1.0 / (double(domain_length_y) / (num_grid_points_base_j * level_fact));
 
     for cij in c_vars_ddt_patch.ispace do
         -----------------------
@@ -181,26 +181,75 @@ do
             var dudx : double = numerics.der1Stag (u_coll[i_coll - 1], u_coll[i_coll], u_coll[i_coll + 1], u_coll[i_coll + 2], inv_dx);
             var dvdx : double = numerics.der1Stag (v_coll[i_coll - 1], v_coll[i_coll], v_coll[i_coll + 1], v_coll[i_coll + 2], inv_dx);
             var dTdx : double = numerics.der1Stag (T_coll[i_coll - 1], T_coll[i_coll], T_coll[i_coll + 1], T_coll[i_coll + 2], inv_dx);
-            var dudy : double = numerics.midInterp(u_coll[i_coll - 1], u_coll[i_coll], u_coll[i_coll + 1], u_coll[i_coll + 2]);
-            var dvdy : double = numerics.midInterp(v_coll[i_coll - 1], v_coll[i_coll], v_coll[i_coll + 1], v_coll[i_coll + 2]);
+            var dudy : double = numerics.midInterp(dudy_coll[i_coll - 1], dudy_coll[i_coll], dudy_coll[i_coll + 1], dudy_coll[i_coll + 2]);
+            var dvdy : double = numerics.midInterp(dvdy_coll[i_coll - 1], dvdy_coll[i_coll], dvdy_coll[i_coll + 1], dvdy_coll[i_coll + 2]);
 
             var rho : double = p / (eos.Rg * T);
             var mu  : double = trans.calcDynVisc(T, p);
             var kap : double = trans.calcThermCond(T, p);
             var H   : double = rho * (eos.calcInternalEnergy(T, p) + 0.5 * (u * u + v * v)) + p;
             var st11: double = 2.0 * mu *  dudx - (2.0/3.0) * mu * (dudx + dvdy);
-            var st12: double = 2.0 * mu * (dvdx + dudy);
+            var st21: double = 2.0 * mu * (dvdx + dudy);
 
             flux_mass[i] = -rho * u;
             flux_mmtx[i] = -rho * u * u - p + st11;
-            flux_mmty[i] = -rho * v * u     + st12;
-            flux_enrg[i] = -p * u + u * st11 + v * st12 + kap * dTdx;
-
+            flux_mmty[i] = -rho * v * u     + st21;
+            flux_enrg[i] = -H   *     u     + u * st11 + v * st21 + kap * dTdx;
         end
+        var flux_div_x_mass : double = numerics.der1Stag(flux_mass[0], flux_mass[1], flux_mass[2], flux_mass[3], inv_dx)
+        var flux_div_x_mmtx : double = numerics.der1Stag(flux_mmtx[0], flux_mmtx[1], flux_mmtx[2], flux_mmtx[3], inv_dx)
+        var flux_div_x_mmty : double = numerics.der1Stag(flux_mmty[0], flux_mmty[1], flux_mmty[2], flux_mmty[3], inv_dx)
+        var flux_div_x_enrg : double = numerics.der1Stag(flux_mmty[0], flux_mmty[1], flux_mmty[2], flux_mmty[3], inv_dx)
 
         -----------------------
         -- ASSEMBLE Y-FLUXES --
         -----------------------
+        for j = 0, numerics.stencil_width_ext do
+            var cij_shifted : int3d = int3d({cij.x, cij.y, cij.z - stencil_ext_ctr + j});
+            var pvars : PrimitiveVars = conservativeToPrimitive(c_vars_now_patch[cij_shifted].mass, c_vars_now_patch[cij_shifted].mmtx, c_vars_now_patch[cij_shifted].mmty, c_vars_now_patch[cij_shifted].enrg);
+            u_coll[j] = pvars.u;
+            v_coll[j] = pvars.v;
+            T_coll[j] = pvars.T;
+            p_coll[j] = pvars.p;
+            dudx_coll[j] = grad_vel_coll_patch[cij_shifted].dudx
+            dvdx_coll[j] = grad_vel_coll_patch[cij_shifted].dvdx
+        end
+
+        for j = 0, (numerics.stencil_width - 1) do
+            var j_coll : int = j + stencil_coll_shift;
+            var u : double = numerics.midInterp(u_coll[j_coll - 1], u_coll[j_coll], u_coll[j_coll + 1], u_coll[j_coll + 2]);
+            var v : double = numerics.midInterp(v_coll[j_coll - 1], v_coll[j_coll], v_coll[j_coll + 1], v_coll[j_coll + 2]);
+            var T : double = numerics.midInterp(T_coll[j_coll - 1], T_coll[j_coll], T_coll[j_coll + 1], T_coll[j_coll + 2]);
+            var p : double = numerics.midInterp(p_coll[j_coll - 1], p_coll[j_coll], p_coll[j_coll + 1], p_coll[j_coll + 2]);
+
+            var dudy : double = numerics.der1Stag (u_coll[j_coll - 1], u_coll[j_coll], u_coll[j_coll + 1], u_coll[j_coll + 2], inv_dy);
+            var dvdy : double = numerics.der1Stag (v_coll[j_coll - 1], v_coll[j_coll], v_coll[j_coll + 1], v_coll[j_coll + 2], inv_dy);
+            var dTdy : double = numerics.der1Stag (T_coll[j_coll - 1], T_coll[j_coll], T_coll[j_coll + 1], T_coll[j_coll + 2], inv_dy);
+            var dudx : double = numerics.midInterp(dudx_coll[j_coll - 1], dudx_coll[j_coll], dudx_coll[j_coll + 1], dudx_coll[j_coll + 2]);
+            var dvdx : double = numerics.midInterp(dvdx_coll[j_coll - 1], dvdx_coll[j_coll], dvdx_coll[j_coll + 1], dvdx_coll[j_coll + 2]);
+
+            var rho : double = p / (eos.Rg * T);
+            var mu  : double = trans.calcDynVisc(T, p);
+            var kap : double = trans.calcThermCond(T, p);
+            var H   : double = rho * (eos.calcInternalEnergy(T, p) + 0.5 * (u * u + v * v)) + p;
+            var st12: double = 2.0 * mu * (dvdx + dudy);
+            var st22: double = 2.0 * mu *  dvdy - (2.0/3.0) * mu * (dudx + dvdy);
+
+            flux_mass[j] = -rho * v;
+            flux_mmtx[j] = -rho * u * v     + st12;
+            flux_mmty[j] = -rho * v * v - p + st22;
+            flux_enrg[j] = -H   *     v     + u * st12 + v * st22 + kap * dTdy;
+        end
+        var flux_div_y_mass : double = numerics.der1Stag(flux_mass[0], flux_mass[1], flux_mass[2], flux_mass[3], inv_dy)
+        var flux_div_y_mmtx : double = numerics.der1Stag(flux_mmtx[0], flux_mmtx[1], flux_mmtx[2], flux_mmtx[3], inv_dy)
+        var flux_div_y_mmty : double = numerics.der1Stag(flux_mmty[0], flux_mmty[1], flux_mmty[2], flux_mmty[3], inv_dy)
+        var flux_div_y_enrg : double = numerics.der1Stag(flux_mmty[0], flux_mmty[1], flux_mmty[2], flux_mmty[3], inv_dy)
+
+
+        c_vars_ddt_patch[cij].mass = flux_div_x_mass + flux_div_y_mass
+        c_vars_ddt_patch[cij].mmtx = flux_div_x_mmtx + flux_div_y_mmtx
+        c_vars_ddt_patch[cij].mmty = flux_div_x_mmty + flux_div_y_mmty
+        c_vars_ddt_patch[cij].enrg = flux_div_x_enrg + flux_div_y_enrg
 
     end -- for cij in c_vars_ddt_patch.ispace 
 
@@ -208,10 +257,11 @@ end
 
 
 -- Compute algebraic operations in SSP-RK3 scheme
-function SSPRK3Stage(dt, stage)
+function SSPRK3Stage(stage)
     if      stage == 0 then
         -- u1 = u0 + u1 * dt
         local task ssprk3Stage(
+            dt : double,
             u0 : region(ispace(int3d), CVARS),
             u1 : region(ispace(int3d), CVARS)
         )
@@ -231,6 +281,7 @@ function SSPRK3Stage(dt, stage)
     elseif stage == 1 then
         -- u2 = 0.75 * u0 + 0.25 * u1 + 0.25 * dt * u2
         local task ssprk3Stage(
+            dt : double,
             u0 : region(ispace(int3d), CVARS),
             u1 : region(ispace(int3d), CVARS),
             u2 : region(ispace(int3d), CVARS)
@@ -241,7 +292,7 @@ function SSPRK3Stage(dt, stage)
         do
             var offset_0 = u0.bounds.lo - u2.bounds.lo
             var offset_1 = u1.bounds.lo - u2.bounds.lo
-            for cij in u1.ispace do
+            for cij in u2.ispace do
                 u2[cij].mass = 0.75 * u0[cij + offset_0].mass + 0.25 * (u1[cij + offset_1].mass + u2[cij].mass * dt)
                 u2[cij].mmtx = 0.75 * u0[cij + offset_0].mmtx + 0.25 * (u1[cij + offset_1].mmtx + u2[cij].mmtx * dt)
                 u2[cij].mmty = 0.75 * u0[cij + offset_0].mmty + 0.25 * (u1[cij + offset_1].mmty + u2[cij].mmty * dt)
@@ -252,6 +303,7 @@ function SSPRK3Stage(dt, stage)
     elseif stage == 2 then
         -- u0 = (1/3) * u0 + (2/3) * u2 + (2/3) * u1 * dt 
         local task ssprk3Stage(
+            dt : double,
             u0 : region(ispace(int3d), CVARS),
             u1 : region(ispace(int3d), CVARS),
             u2 : region(ispace(int3d), CVARS)
@@ -271,172 +323,6 @@ function SSPRK3Stage(dt, stage)
         end
         return ssprk3Stage
     end
-end
-
-
-
--- Conduct RK3 update
-function solver.SSPRK3Launch(dt)
-    local
-    task SSPRK3Task(
-        rgn_cvars_0                     : region(ispace(int3d), CVARS   ),
-        rgn_cvars_1                     : region(ispace(int3d), CVARS   ),
-        rgn_cvars_2                     : region(ispace(int3d), CVARS   ),
-        rgn_grad_vel_coll               : region(ispace(int3d), GRAD_VEL),
-        rgn_grid                        : region(ispace(int3d), grid_fsp),    
-        rgn_meta                        : region(ispace(int1d), grid_meta_fsp),
-        --
-        part_cvars_0_int                : partition(disjoint, rgn_cvars_0, ispace(int1d)),
-        part_cvars_0_all                : partition(disjoint, rgn_cvars_0, ispace(int1d)),
-        part_cvars_0_i_prev_send        : partition(disjoint, rgn_cvars_0, ispace(int1d)),
-        part_cvars_0_i_next_send        : partition(disjoint, rgn_cvars_0, ispace(int1d)),
-        part_cvars_0_j_prev_send        : partition(disjoint, rgn_cvars_0, ispace(int1d)),
-        part_cvars_0_j_next_send        : partition(disjoint, rgn_cvars_0, ispace(int1d)),
-        part_cvars_0_i_prev_recv        : partition(disjoint, rgn_cvars_0, ispace(int1d)),
-        part_cvars_0_i_next_recv        : partition(disjoint, rgn_cvars_0, ispace(int1d)),
-        part_cvars_0_j_prev_recv        : partition(disjoint, rgn_cvars_0, ispace(int1d)),
-        part_cvars_0_j_next_recv        : partition(disjoint, rgn_cvars_0, ispace(int1d)),
-        --
-        part_cvars_1_int                : partition(disjoint, rgn_cvars_1, ispace(int1d)),
-        part_cvars_1_all                : partition(disjoint, rgn_cvars_1, ispace(int1d)),
-        part_cvars_1_i_prev_send        : partition(disjoint, rgn_cvars_1, ispace(int1d)),
-        part_cvars_1_i_next_send        : partition(disjoint, rgn_cvars_1, ispace(int1d)),
-        part_cvars_1_j_prev_send        : partition(disjoint, rgn_cvars_1, ispace(int1d)),
-        part_cvars_1_j_next_send        : partition(disjoint, rgn_cvars_1, ispace(int1d)),
-        part_cvars_1_i_prev_recv        : partition(disjoint, rgn_cvars_1, ispace(int1d)),
-        part_cvars_1_i_next_recv        : partition(disjoint, rgn_cvars_1, ispace(int1d)),
-        part_cvars_1_j_prev_recv        : partition(disjoint, rgn_cvars_1, ispace(int1d)),
-        part_cvars_1_j_next_recv        : partition(disjoint, rgn_cvars_1, ispace(int1d)),
-        --
-        part_cvars_2_int                : partition(disjoint, rgn_cvars_2, ispace(int1d)),
-        part_cvars_2_all                : partition(disjoint, rgn_cvars_2, ispace(int1d)),
-        part_cvars_2_i_prev_send        : partition(disjoint, rgn_cvars_2, ispace(int1d)),
-        part_cvars_2_i_next_send        : partition(disjoint, rgn_cvars_2, ispace(int1d)),
-        part_cvars_2_j_prev_send        : partition(disjoint, rgn_cvars_2, ispace(int1d)),
-        part_cvars_2_j_next_send        : partition(disjoint, rgn_cvars_2, ispace(int1d)),
-        part_cvars_2_i_prev_recv        : partition(disjoint, rgn_cvars_2, ispace(int1d)),
-        part_cvars_2_i_next_recv        : partition(disjoint, rgn_cvars_2, ispace(int1d)),
-        part_cvars_2_j_prev_recv        : partition(disjoint, rgn_cvars_2, ispace(int1d)),
-        part_cvars_2_j_next_recv        : partition(disjoint, rgn_cvars_2, ispace(int1d)),
-        --
-        part_grad_vel_coll_int          : partition(disjoint, rgn_grad_vel_coll, ispace(int1d)),
-        part_grad_vel_coll_all          : partition(disjoint, rgn_grad_vel_coll, ispace(int1d)),
-        part_grad_vel_coll_i_prev_send  : partition(disjoint, rgn_grad_vel_coll, ispace(int1d)),
-        part_grad_vel_coll_i_next_send  : partition(disjoint, rgn_grad_vel_coll, ispace(int1d)),
-        part_grad_vel_coll_j_prev_send  : partition(disjoint, rgn_grad_vel_coll, ispace(int1d)),
-        part_grad_vel_coll_j_next_send  : partition(disjoint, rgn_grad_vel_coll, ispace(int1d)),
-        part_grad_vel_coll_i_prev_recv  : partition(disjoint, rgn_grad_vel_coll, ispace(int1d)),
-        part_grad_vel_coll_i_next_recv  : partition(disjoint, rgn_grad_vel_coll, ispace(int1d)),
-        part_grad_vel_coll_j_prev_recv  : partition(disjoint, rgn_grad_vel_coll, ispace(int1d)),
-        part_grad_vel_coll_j_next_recv  : partition(disjoint, rgn_grad_vel_coll, ispace(int1d)),
-        --
-        part_grid                       : partition(disjoint, rgn_grid, ispace(int1d)),
-        part_meta                       : partition(disjoint, rgn_meta, ispace(int1d))
-    )
-    where
-        reads writes(rgn_cvars_0, rgn_cvars_1, rgn_cvars_2, rgn_grad_vel_coll),
-        reads(rgn_grid, rgn_meta)
-    do
-
-        -- Stage 0
-        solver.calcRHSLaunch(
-            rgn_cvars_1, rgn_cvars_0, rgn_grad_vel_coll, rgn_grid, rgn_meta, part_cvars_1_int,
-            part_cvars_0_int,
-            part_cvars_0_all,
-            part_cvars_0_i_prev_send,
-            part_cvars_0_i_next_send,
-            part_cvars_0_j_prev_send,
-            part_cvars_0_j_next_send,
-            part_cvars_0_i_prev_recv,
-            part_cvars_0_i_next_recv,
-            part_cvars_0_j_prev_recv,
-            part_cvars_0_j_next_recv,
-            part_grad_vel_coll_int,
-            part_grad_vel_coll_all,
-            part_grad_vel_coll_i_prev_send,
-            part_grad_vel_coll_i_next_send,
-            part_grad_vel_coll_j_prev_send,
-            part_grad_vel_coll_j_next_send,
-            part_grad_vel_coll_i_prev_recv,
-            part_grad_vel_coll_i_next_recv,
-            part_grad_vel_coll_j_prev_recv,
-            part_grad_vel_coll_j_next_recv,
-            part_grid, part_meta
-        )
-        for color in part_meta.colors do
-            var pid = int1d(color);
-            if (part_meta[color][color].level > (-1)) then
-                [SSPRK3Stage(dt, 0)](part_cvars_0_int[pid], part_cvars_1_int[pid]);
-            end
-        end
-
-        -- Stage 1
-        solver.calcRHSLaunch(
-            rgn_cvars_2, rgn_cvars_1, rgn_grad_vel_coll, rgn_grid, rgn_meta, part_cvars_2_int,
-            part_cvars_1_int,
-            part_cvars_1_all,
-            part_cvars_1_i_prev_send,
-            part_cvars_1_i_next_send,
-            part_cvars_1_j_prev_send,
-            part_cvars_1_j_next_send,
-            part_cvars_1_i_prev_recv,
-            part_cvars_1_i_next_recv,
-            part_cvars_1_j_prev_recv,
-            part_cvars_1_j_next_recv,
-            part_grad_vel_coll_int,
-            part_grad_vel_coll_all,
-            part_grad_vel_coll_i_prev_send,
-            part_grad_vel_coll_i_next_send,
-            part_grad_vel_coll_j_prev_send,
-            part_grad_vel_coll_j_next_send,
-            part_grad_vel_coll_i_prev_recv,
-            part_grad_vel_coll_i_next_recv,
-            part_grad_vel_coll_j_prev_recv,
-            part_grad_vel_coll_j_next_recv,
-            part_grid, part_meta
-        )
-        for color in part_meta.colors do
-            var pid = int1d(color);
-            if (part_meta[color][color].level > (-1)) then
-                [SSPRK3Stage(dt, 1)](part_cvars_0_int[pid], part_cvars_1_int[pid], part_cvars_2_int[pid]);
-            end
-        end
-
-        -- Stage 2
-        solver.calcRHSLaunch(
-            rgn_cvars_1, rgn_cvars_2, rgn_grad_vel_coll, rgn_grid, rgn_meta, part_cvars_1_int,
-            part_cvars_2_int,
-            part_cvars_2_all,
-            part_cvars_2_i_prev_send,
-            part_cvars_2_i_next_send,
-            part_cvars_2_j_prev_send,
-            part_cvars_2_j_next_send,
-            part_cvars_2_i_prev_recv,
-            part_cvars_2_i_next_recv,
-            part_cvars_2_j_prev_recv,
-            part_cvars_2_j_next_recv,
-            part_grad_vel_coll_int,
-            part_grad_vel_coll_all,
-            part_grad_vel_coll_i_prev_send,
-            part_grad_vel_coll_i_next_send,
-            part_grad_vel_coll_j_prev_send,
-            part_grad_vel_coll_j_next_send,
-            part_grad_vel_coll_i_prev_recv,
-            part_grad_vel_coll_i_next_recv,
-            part_grad_vel_coll_j_prev_recv,
-            part_grad_vel_coll_j_next_recv,
-            part_grid, part_meta
-        )
-        -- for color in part_meta.colors do
-        --     var pid = int1d(color);
-        --     if (part_meta[color][color].level > (-1)) then
-        --         [SSPRK3Stage(dt, 2)](part_cvars_0_int[pid], part_cvars_1_int[pid], part_cvars_2_int[pid]);
-        --     end
-        -- end
-
-
-    end
-    return SSPRK3Task
 end
 
 
@@ -509,6 +395,7 @@ do
         part_grad_vel_coll_j_prev_recv,
         part_grad_vel_coll_j_next_recv
     );
+    -- fill(rgn_cvars_ddt.{mass, mmtx, mmty, enrg}, 0.0);
     for color in part_meta.colors do
         var pid = int1d(color);
         if (part_meta[color][color].level > (-1)) then
@@ -516,6 +403,168 @@ do
         end
     end
 end
+
+
+
+-- Conduct RK3 update
+task solver.SSPRK3Launch(
+    dt                              : double,
+    rgn_cvars_0                     : region(ispace(int3d), CVARS   ),
+    rgn_cvars_1                     : region(ispace(int3d), CVARS   ),
+    rgn_cvars_2                     : region(ispace(int3d), CVARS   ),
+    rgn_grad_vel_coll               : region(ispace(int3d), GRAD_VEL),
+    rgn_grid                        : region(ispace(int3d), grid_fsp),    
+    rgn_meta                        : region(ispace(int1d), grid_meta_fsp),
+    --
+    part_cvars_0_int                : partition(disjoint, rgn_cvars_0, ispace(int1d)),
+    part_cvars_0_all                : partition(disjoint, rgn_cvars_0, ispace(int1d)),
+    part_cvars_0_i_prev_send        : partition(disjoint, rgn_cvars_0, ispace(int1d)),
+    part_cvars_0_i_next_send        : partition(disjoint, rgn_cvars_0, ispace(int1d)),
+    part_cvars_0_j_prev_send        : partition(disjoint, rgn_cvars_0, ispace(int1d)),
+    part_cvars_0_j_next_send        : partition(disjoint, rgn_cvars_0, ispace(int1d)),
+    part_cvars_0_i_prev_recv        : partition(disjoint, rgn_cvars_0, ispace(int1d)),
+    part_cvars_0_i_next_recv        : partition(disjoint, rgn_cvars_0, ispace(int1d)),
+    part_cvars_0_j_prev_recv        : partition(disjoint, rgn_cvars_0, ispace(int1d)),
+    part_cvars_0_j_next_recv        : partition(disjoint, rgn_cvars_0, ispace(int1d)),
+    --
+    part_cvars_1_int                : partition(disjoint, rgn_cvars_1, ispace(int1d)),
+    part_cvars_1_all                : partition(disjoint, rgn_cvars_1, ispace(int1d)),
+    part_cvars_1_i_prev_send        : partition(disjoint, rgn_cvars_1, ispace(int1d)),
+    part_cvars_1_i_next_send        : partition(disjoint, rgn_cvars_1, ispace(int1d)),
+    part_cvars_1_j_prev_send        : partition(disjoint, rgn_cvars_1, ispace(int1d)),
+    part_cvars_1_j_next_send        : partition(disjoint, rgn_cvars_1, ispace(int1d)),
+    part_cvars_1_i_prev_recv        : partition(disjoint, rgn_cvars_1, ispace(int1d)),
+    part_cvars_1_i_next_recv        : partition(disjoint, rgn_cvars_1, ispace(int1d)),
+    part_cvars_1_j_prev_recv        : partition(disjoint, rgn_cvars_1, ispace(int1d)),
+    part_cvars_1_j_next_recv        : partition(disjoint, rgn_cvars_1, ispace(int1d)),
+    --
+    part_cvars_2_int                : partition(disjoint, rgn_cvars_2, ispace(int1d)),
+    part_cvars_2_all                : partition(disjoint, rgn_cvars_2, ispace(int1d)),
+    part_cvars_2_i_prev_send        : partition(disjoint, rgn_cvars_2, ispace(int1d)),
+    part_cvars_2_i_next_send        : partition(disjoint, rgn_cvars_2, ispace(int1d)),
+    part_cvars_2_j_prev_send        : partition(disjoint, rgn_cvars_2, ispace(int1d)),
+    part_cvars_2_j_next_send        : partition(disjoint, rgn_cvars_2, ispace(int1d)),
+    part_cvars_2_i_prev_recv        : partition(disjoint, rgn_cvars_2, ispace(int1d)),
+    part_cvars_2_i_next_recv        : partition(disjoint, rgn_cvars_2, ispace(int1d)),
+    part_cvars_2_j_prev_recv        : partition(disjoint, rgn_cvars_2, ispace(int1d)),
+    part_cvars_2_j_next_recv        : partition(disjoint, rgn_cvars_2, ispace(int1d)),
+    --
+    part_grad_vel_coll_int          : partition(disjoint, rgn_grad_vel_coll, ispace(int1d)),
+    part_grad_vel_coll_all          : partition(disjoint, rgn_grad_vel_coll, ispace(int1d)),
+    part_grad_vel_coll_i_prev_send  : partition(disjoint, rgn_grad_vel_coll, ispace(int1d)),
+    part_grad_vel_coll_i_next_send  : partition(disjoint, rgn_grad_vel_coll, ispace(int1d)),
+    part_grad_vel_coll_j_prev_send  : partition(disjoint, rgn_grad_vel_coll, ispace(int1d)),
+    part_grad_vel_coll_j_next_send  : partition(disjoint, rgn_grad_vel_coll, ispace(int1d)),
+    part_grad_vel_coll_i_prev_recv  : partition(disjoint, rgn_grad_vel_coll, ispace(int1d)),
+    part_grad_vel_coll_i_next_recv  : partition(disjoint, rgn_grad_vel_coll, ispace(int1d)),
+    part_grad_vel_coll_j_prev_recv  : partition(disjoint, rgn_grad_vel_coll, ispace(int1d)),
+    part_grad_vel_coll_j_next_recv  : partition(disjoint, rgn_grad_vel_coll, ispace(int1d)),
+    --
+    part_grid                       : partition(disjoint, rgn_grid, ispace(int1d)),
+    part_meta                       : partition(disjoint, rgn_meta, ispace(int1d))
+)
+where
+    reads writes(rgn_cvars_0, rgn_cvars_1, rgn_cvars_2, rgn_grad_vel_coll),
+    reads(rgn_grid, rgn_meta)
+do
+
+    -- Stage 0
+    solver.calcRHSLaunch(
+        rgn_cvars_1, rgn_cvars_0, rgn_grad_vel_coll, rgn_grid, rgn_meta, part_cvars_1_int,
+        part_cvars_0_int,
+        part_cvars_0_all,
+        part_cvars_0_i_prev_send,
+        part_cvars_0_i_next_send,
+        part_cvars_0_j_prev_send,
+        part_cvars_0_j_next_send,
+        part_cvars_0_i_prev_recv,
+        part_cvars_0_i_next_recv,
+        part_cvars_0_j_prev_recv,
+        part_cvars_0_j_next_recv,
+        part_grad_vel_coll_int,
+        part_grad_vel_coll_all,
+        part_grad_vel_coll_i_prev_send,
+        part_grad_vel_coll_i_next_send,
+        part_grad_vel_coll_j_prev_send,
+        part_grad_vel_coll_j_next_send,
+        part_grad_vel_coll_i_prev_recv,
+        part_grad_vel_coll_i_next_recv,
+        part_grad_vel_coll_j_prev_recv,
+        part_grad_vel_coll_j_next_recv,
+        part_grid, part_meta
+    )
+    for color in part_meta.colors do
+        var pid = int1d(color);
+        if (part_meta[color][color].level > (-1)) then
+            [SSPRK3Stage(0)](dt, part_cvars_0_int[pid], part_cvars_1_int[pid]);
+        end
+    end
+
+    -- Stage 1
+    solver.calcRHSLaunch(
+        rgn_cvars_2, rgn_cvars_1, rgn_grad_vel_coll, rgn_grid, rgn_meta, part_cvars_2_int,
+        part_cvars_1_int,
+        part_cvars_1_all,
+        part_cvars_1_i_prev_send,
+        part_cvars_1_i_next_send,
+        part_cvars_1_j_prev_send,
+        part_cvars_1_j_next_send,
+        part_cvars_1_i_prev_recv,
+        part_cvars_1_i_next_recv,
+        part_cvars_1_j_prev_recv,
+        part_cvars_1_j_next_recv,
+        part_grad_vel_coll_int,
+        part_grad_vel_coll_all,
+        part_grad_vel_coll_i_prev_send,
+        part_grad_vel_coll_i_next_send,
+        part_grad_vel_coll_j_prev_send,
+        part_grad_vel_coll_j_next_send,
+        part_grad_vel_coll_i_prev_recv,
+        part_grad_vel_coll_i_next_recv,
+        part_grad_vel_coll_j_prev_recv,
+        part_grad_vel_coll_j_next_recv,
+        part_grid, part_meta
+    )
+    for color in part_meta.colors do
+        var pid = int1d(color);
+        if (part_meta[color][color].level > (-1)) then
+            [SSPRK3Stage(1)](dt, part_cvars_0_int[pid], part_cvars_1_int[pid], part_cvars_2_int[pid]);
+        end
+    end
+
+    -- Stage 2
+    solver.calcRHSLaunch(
+        rgn_cvars_1, rgn_cvars_2, rgn_grad_vel_coll, rgn_grid, rgn_meta, part_cvars_1_int,
+        part_cvars_2_int,
+        part_cvars_2_all,
+        part_cvars_2_i_prev_send,
+        part_cvars_2_i_next_send,
+        part_cvars_2_j_prev_send,
+        part_cvars_2_j_next_send,
+        part_cvars_2_i_prev_recv,
+        part_cvars_2_i_next_recv,
+        part_cvars_2_j_prev_recv,
+        part_cvars_2_j_next_recv,
+        part_grad_vel_coll_int,
+        part_grad_vel_coll_all,
+        part_grad_vel_coll_i_prev_send,
+        part_grad_vel_coll_i_next_send,
+        part_grad_vel_coll_j_prev_send,
+        part_grad_vel_coll_j_next_send,
+        part_grad_vel_coll_i_prev_recv,
+        part_grad_vel_coll_i_next_recv,
+        part_grad_vel_coll_j_prev_recv,
+        part_grad_vel_coll_j_next_recv,
+        part_grid, part_meta
+    )
+    for color in part_meta.colors do
+        var pid = int1d(color);
+        if (part_meta[color][color].level > (-1)) then
+            [SSPRK3Stage(2)](dt, part_cvars_0_int[pid], part_cvars_1_int[pid], part_cvars_2_int[pid]);
+        end
+    end
+end
+
 
 function dumpDensity(fname)
     local task taskDump(
@@ -554,6 +603,12 @@ end
 
 
 task solver.main()
+
+    var args = c.legion_runtime_get_input_args()
+    var i = 1
+    var loop_cnt:     int = c.atoi(args.argv[1]);
+    var time_step: double = c.atof(args.argv[2]);
+    -- 
     c.printf("Solver initialization:")
     c.printf("  -- Patch size (interior) : %d x %d\n", grid.patch_size, grid.patch_size)
     c.printf("  -- Ghost points on each side in each dimension: %d\n", grid.num_ghosts)
@@ -659,7 +714,7 @@ task solver.main()
         problem_config.setInitialCondition(patches_grid_int[color], patches_meta[color], patches_cvars_0_int[color])
     end
 
-    [dumpDensity("density_init.dat")](rgn_patches_cvars_0, rgn_patches_grid, rgn_patches_meta, patches_cvars_0_int, patches_grid_int);
+    [dumpDensity("density_0.dat")](rgn_patches_cvars_0, rgn_patches_grid, rgn_patches_meta, patches_cvars_0_int, patches_grid_int);
     --
     --
     -- TODO: Recursively refine mesh to higher levels
@@ -678,8 +733,9 @@ task solver.main()
     --         solver.calcRHSLeaf(patches_cvars_1_int[int1d(pid)], patches_cvars_0[int1d(pid)], patches_grad_vel[int1d(pid)], patches_grid[int1d(pid)], patches_meta[int1d(pid)]);
     --     end
     -- end
-    -- for i = 0, 10 do
-        [solver.SSPRK3Launch(0.001)](
+    for i = 0, loop_cnt do
+        solver.SSPRK3Launch(
+            time_step,
             rgn_patches_cvars_0,
             rgn_patches_cvars_1,
             rgn_patches_cvars_2,
@@ -734,7 +790,31 @@ task solver.main()
             patches_grid,
             patches_meta
         );
-    -- end
+        var filename_raw : &int8 = [&int8] (c.malloc(18*8))
+        c.sprintf(filename_raw, "density_%06d.dat", i+1)
+        var file = c.fopen(filename_raw, "w")
+        c.fprintf(file, "%8s, %8s, %8s, %8s, %8s, %23s, %23s, %23s\n", "color_id", "patch_i", "patch_j", "local_i", "local_j", "x", "y", "density")
+        -- color_id (%8d), patch_i (%8d), patch_j (%8d), local_i (%8d), local_j (%8d), x (%23.16e), y (%23.16e), pressure (%23.16e)
+            -- c.fprintf(file, "%7s, %7s, %7s, %7s, %7s, %7s, %7s, %7s, %7s, %7s, %7s, %7s, %7s, %7s, %7s\n"
+        for pid in rgn_patches_meta.ispace do
+            if rgn_patches_meta[pid].level > -1 then
+                var cvars_patch = patches_cvars_0_int[pid]
+                var grid_patch  = patches_grid_int[pid]
+                for cij in cvars_patch.ispace do
+                    var patch_i = rgn_patches_meta[pid].i_coord
+                    var patch_j = rgn_patches_meta[pid].j_coord
+                    var density = cvars_patch[cij].mass
+                    var x = grid_patch[cij].x
+                    var y = grid_patch[cij].y
+                    c.fprintf(file, "%8d, %8d, %8d, %8d, %8d, %23.16e, %23.16e, %23.16e\n",
+                                    int(pid), patch_i, patch_j, cij.y, cij.z, x, y, density)
+                end
+            end
+        end
+        c.fclose(file)
+        -- var filename = "density_" .. tostring(i) .. ".dat"
+        -- [dumpDensity(filename)](rgn_patches_cvars_0, rgn_patches_grid, rgn_patches_meta, patches_cvars_0_int, patches_grid_int);
+    end
 
 end
 

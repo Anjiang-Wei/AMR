@@ -3,12 +3,19 @@ matplotlib.use("agg")
 import numpy as np
 import matplotlib.pyplot as plt
 
+
+tid_start = 1
+num_steps = 10
+
+input_file_fmt = "../src/density_{:06d}.dat"
+fig_name_fmt = "field_vis_{:06d}.png"
+
 def main():
-    f_patch_init, x_patch, y_patch = loadData("../src/density_init.dat")
-    f_patch_final, _, _            = loadData("../src/density_final.dat")
-    f_patch = f_patch_init# - f_patch_final
-    # f_patch = f_patch_final
-    plotData(f_patch, x_patch, y_patch)
+    for i in range(num_steps):
+        tid = i + tid_start
+        f_patch, x_patch, y_patch = loadData(input_file_fmt.format(tid))
+        plotData(f_patch, x_patch, y_patch, figname=fig_name_fmt.format(tid), vmax=1.2, vmin=0.7)
+
 
 def plotData(f_patch, x_patch, y_patch, figname="field_vis.png", cmap='gnuplot2_r', vmin=None, vmax=None, rasterized=False, figsize=None):
     if vmin is None:
