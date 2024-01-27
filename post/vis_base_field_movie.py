@@ -6,12 +6,13 @@ import matplotlib.pyplot as plt
 
 tid_start = 1
 num_steps = 10
+stride = 2
 
 input_file_fmt = "../src/density_{:06d}.dat"
 fig_name_fmt = "field_vis_{:06d}.png"
 
 def main():
-    for i in range(num_steps):
+    for i in [0] + list(range(tid_start, num_steps, stride)):
         tid = i + tid_start
         f_patch, x_patch, y_patch = loadData(input_file_fmt.format(tid))
         plotData(f_patch, x_patch, y_patch, figname=fig_name_fmt.format(tid), vmax=1.2, vmin=0.7)

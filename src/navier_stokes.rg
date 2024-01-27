@@ -566,48 +566,46 @@ do
 end
 
 
-function dumpDensity(fname)
-    local task taskDump(
-        rgn_cvars      :  region(ispace(int3d), CVARS),
-        rgn_grid       :  region(ispace(int3d), grid_fsp),    
-        rgn_meta       :  region(ispace(int1d), grid_meta_fsp),
-        patches_cvars  :  partition(disjoint, rgn_cvars, ispace(int1d)),
-        patches_grid   :  partition(disjoint, rgn_grid, ispace(int1d))
-    )
-    where
-        reads (rgn_cvars.mass, rgn_grid.{x, y}, rgn_meta.{level,i_coord,j_coord})
-    do
-        var file = c.fopen(fname, "w")
-        c.fprintf(file, "%8s, %8s, %8s, %8s, %8s, %23s, %23s, %23s\n", "color_id", "patch_i", "patch_j", "local_i", "local_j", "x", "y", "density")
-        -- color_id (%8d), patch_i (%8d), patch_j (%8d), local_i (%8d), local_j (%8d), x (%23.16e), y (%23.16e), pressure (%23.16e)
-            -- c.fprintf(file, "%7s, %7s, %7s, %7s, %7s, %7s, %7s, %7s, %7s, %7s, %7s, %7s, %7s, %7s, %7s\n"
-        for pid in rgn_meta.ispace do
-            if rgn_meta[pid].level > -1 then
-                var cvars_patch = patches_cvars[pid]
-                var grid_patch = patches_grid[pid]
-                for cij in cvars_patch.ispace do
-                    var patch_i = rgn_meta[pid].i_coord
-                    var patch_j = rgn_meta[pid].j_coord
-                    var density = cvars_patch[cij].mass
-                    var x = grid_patch[cij].x
-                    var y = grid_patch[cij].y
-                    c.fprintf(file, "%8d, %8d, %8d, %8d, %8d, %23.16e, %23.16e, %23.16e\n",
-                                    int(pid), patch_i, patch_j, cij.y, cij.z, x, y, density)
-                end
+local task dumpDensity(
+    fname          :  rawstring,
+    rgn_cvars      :  region(ispace(int3d), CVARS),
+    rgn_grid       :  region(ispace(int3d), grid_fsp),    
+    rgn_meta       :  region(ispace(int1d), grid_meta_fsp),
+    patches_cvars  :  partition(disjoint, rgn_cvars, ispace(int1d)),
+    patches_grid   :  partition(disjoint, rgn_grid, ispace(int1d))
+)
+where
+    reads (rgn_cvars, rgn_grid.{x, y}, rgn_meta.{level,i_coord,j_coord})
+do
+    var file = c.fopen(fname, "w")
+    --c.fprintf(file, "%8s, %8s, %8s, %8s, %8s, %23s, %23s, %23s\n", "color_id", "patch_i", "patch_j", "local_i", "local_j", "x", "y", "density")
+    c.fprintf(file, "%8s, %8s, %8s, %8s, %8s, %23s, %23s, %23s, %23s, %23s, %23s\n", "color_id", "patch_i", "patch_j", "local_i", "local_j", "x", "y", "vel-x", "vel-y", "temperature", "pressure")
+    for pid in rgn_meta.ispace do
+        if rgn_meta[pid].level > -1 then
+            var cvars_patch = patches_cvars[pid]
+            var grid_patch = patches_grid[pid]
+            for cij in cvars_patch.ispace do
+                var patch_i = rgn_meta[pid].i_coord
+                var patch_j = rgn_meta[pid].j_coord
+                -- var density = cvars_patch[cij].mass
+                var pvars = conservativeToPrimitive(cvars_patch[cij].mass, cvars_patch[cij].mmtx, cvars_patch[cij].mmty, cvars_patch[cij].enrg)
+                var x = grid_patch[cij].x
+                var y = grid_patch[cij].y
+                c.fprintf(file, "%8d, %8d, %8d, %8d, %8d, %23.16e, %23.16e, %23.16e, %23.16e, %23.16e, %23.16e\n",
+                                int(pid), patch_i, patch_j, cij.y, cij.z, x, y, pvars.u, pvars.v, pvars.T, pvars.p)
             end
         end
-        c.fclose(file)
     end
-    return taskDump
+    c.fclose(file)
 end
 
 
 task solver.main()
 
     var args = c.legion_runtime_get_input_args()
-    var i = 1
     var loop_cnt:     int = c.atoi(args.argv[1]);
     var time_step: double = c.atof(args.argv[2]);
+    var stride:       int = c.atoi(args.argv[3]);
     -- 
     c.printf("Solver initialization:")
     c.printf("  -- Patch size (interior) : %d x %d\n", grid.patch_size, grid.patch_size)
@@ -714,7 +712,7 @@ task solver.main()
         problem_config.setInitialCondition(patches_grid_int[color], patches_meta[color], patches_cvars_0_int[color])
     end
 
-    [dumpDensity("density_0.dat")](rgn_patches_cvars_0, rgn_patches_grid, rgn_patches_meta, patches_cvars_0_int, patches_grid_int);
+    dumpDensity("density_000000.dat", rgn_patches_cvars_0, rgn_patches_grid, rgn_patches_meta, patches_cvars_0_int, patches_grid_int);
     --
     --
     -- TODO: Recursively refine mesh to higher levels
@@ -790,30 +788,13 @@ task solver.main()
             patches_grid,
             patches_meta
         );
-        var filename_raw : &int8 = [&int8] (c.malloc(18*8))
-        c.sprintf(filename_raw, "density_%06d.dat", i+1)
-        var file = c.fopen(filename_raw, "w")
-        c.fprintf(file, "%8s, %8s, %8s, %8s, %8s, %23s, %23s, %23s\n", "color_id", "patch_i", "patch_j", "local_i", "local_j", "x", "y", "density")
-        -- color_id (%8d), patch_i (%8d), patch_j (%8d), local_i (%8d), local_j (%8d), x (%23.16e), y (%23.16e), pressure (%23.16e)
-            -- c.fprintf(file, "%7s, %7s, %7s, %7s, %7s, %7s, %7s, %7s, %7s, %7s, %7s, %7s, %7s, %7s, %7s\n"
-        for pid in rgn_patches_meta.ispace do
-            if rgn_patches_meta[pid].level > -1 then
-                var cvars_patch = patches_cvars_0_int[pid]
-                var grid_patch  = patches_grid_int[pid]
-                for cij in cvars_patch.ispace do
-                    var patch_i = rgn_patches_meta[pid].i_coord
-                    var patch_j = rgn_patches_meta[pid].j_coord
-                    var density = cvars_patch[cij].mass
-                    var x = grid_patch[cij].x
-                    var y = grid_patch[cij].y
-                    c.fprintf(file, "%8d, %8d, %8d, %8d, %8d, %23.16e, %23.16e, %23.16e\n",
-                                    int(pid), patch_i, patch_j, cij.y, cij.z, x, y, density)
-                end
-            end
+
+        var filename : &int8 = [&int8] (c.malloc(64*8))
+        if i % stride == 0 then
+            c.sprintf(filename, "density_%06d.dat", i+1);
+            dumpDensity(filename, rgn_patches_cvars_0, rgn_patches_grid, rgn_patches_meta, patches_cvars_0_int, patches_grid_int);
         end
-        c.fclose(file)
-        -- var filename = "density_" .. tostring(i) .. ".dat"
-        -- [dumpDensity(filename)](rgn_patches_cvars_0, rgn_patches_grid, rgn_patches_meta, patches_cvars_0_int, patches_grid_int);
+        -- c.free(filename); -- should not free until dumpDensity finishes
     end
 
 end
