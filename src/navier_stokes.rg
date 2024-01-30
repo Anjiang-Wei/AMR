@@ -106,7 +106,7 @@ local terra conservativeToPrimitive (rho : double, rho_u : double, rho_v : doubl
     var pvars : PrimitiveVars;
     pvars.u = rho_u / rho;
     pvars.v = rho_v / rho;
-    pvars.T = ((rho_e / rho) - 0.5 * (pvars.u * pvars.u + pvars.v * pvars.v)) / eos.Rg * (eos.gamma - 1.0);
+    pvars.T = ((rho_e / rho) - 0.5 * (pvars.u * pvars.u + pvars.v * pvars.v)) / double(eos.Rg) * (eos.gamma - 1.0);
     pvars.p = rho * eos.Rg * pvars.T;
     return pvars;
 end 
@@ -199,7 +199,7 @@ do
         var flux_div_x_mass : double = numerics.der1Stag(flux_mass[0], flux_mass[1], flux_mass[2], flux_mass[3], inv_dx)
         var flux_div_x_mmtx : double = numerics.der1Stag(flux_mmtx[0], flux_mmtx[1], flux_mmtx[2], flux_mmtx[3], inv_dx)
         var flux_div_x_mmty : double = numerics.der1Stag(flux_mmty[0], flux_mmty[1], flux_mmty[2], flux_mmty[3], inv_dx)
-        var flux_div_x_enrg : double = numerics.der1Stag(flux_mmty[0], flux_mmty[1], flux_mmty[2], flux_mmty[3], inv_dx)
+        var flux_div_x_enrg : double = numerics.der1Stag(flux_enrg[0], flux_enrg[1], flux_enrg[2], flux_enrg[3], inv_dx)
 
         -----------------------
         -- ASSEMBLE Y-FLUXES --
@@ -243,7 +243,7 @@ do
         var flux_div_y_mass : double = numerics.der1Stag(flux_mass[0], flux_mass[1], flux_mass[2], flux_mass[3], inv_dy)
         var flux_div_y_mmtx : double = numerics.der1Stag(flux_mmtx[0], flux_mmtx[1], flux_mmtx[2], flux_mmtx[3], inv_dy)
         var flux_div_y_mmty : double = numerics.der1Stag(flux_mmty[0], flux_mmty[1], flux_mmty[2], flux_mmty[3], inv_dy)
-        var flux_div_y_enrg : double = numerics.der1Stag(flux_mmty[0], flux_mmty[1], flux_mmty[2], flux_mmty[3], inv_dy)
+        var flux_div_y_enrg : double = numerics.der1Stag(flux_enrg[0], flux_enrg[1], flux_enrg[2], flux_enrg[3], inv_dy)
 
 
         c_vars_ddt_patch[cij].mass = flux_div_x_mass + flux_div_y_mass

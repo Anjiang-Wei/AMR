@@ -32,7 +32,7 @@ config.eos.gamma = 1.4    -- ratio of of specific heats
 
 -- TRANSPORT PROPERTIES
 config.transport.T_ref    = 1.0      -- reference temperature for calculation of viscosity using power-law
-config.transport.mu_ref   = 1.0e-3   -- reference viscosity for calculation of viscosity using power-law
+config.transport.mu_ref   = 0.0 -- 1.0e-3   -- reference viscosity for calculation of viscosity using power-law
 config.transport.visc_exp = 0.76     -- exponent of temperature dependent viscosity
 config.transport.Pr       = 0.7      -- Prandtl number
 

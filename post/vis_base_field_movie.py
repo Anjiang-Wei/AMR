@@ -5,17 +5,27 @@ import matplotlib.pyplot as plt
 
 
 tid_start = 1
-num_steps = 10
-stride = 2
+num_steps = 100
+stride = 10
 
 input_file_fmt = "../src/density_{:06d}.dat"
 fig_name_fmt = "field_vis_{:06d}.png"
 
 def main():
-    for i in [0] + list(range(tid_start, num_steps, stride)):
-        tid = i + tid_start
-        f_patch, x_patch, y_patch = loadData(input_file_fmt.format(tid))
-        plotData(f_patch, x_patch, y_patch, figname=fig_name_fmt.format(tid), vmax=1.2, vmin=0.7)
+    tid_start_loop = 0
+    for i in [0] + list(range(num_steps)):
+        tid = i * stride + tid_start_loop
+        tid_start_loop = tid_start
+        u_patch, v_patch, T_patch, p_patch, x_patch, y_patch = loadData(input_file_fmt.format(tid))
+        f = u_patch - 0.5
+        vmax = np.max(np.abs(f))
+        print(vmax)
+        plotData(f, x_patch, y_patch, figname=fig_name_fmt.format(tid), cmap="seismic", vmax=vmax, vmin=-vmax)
+        #entropy_const = p_patch / ((p_patch/T_patch) ** 1.4)
+        #vmax, vmin = np.max(entropy_const), np.min(entropy_const)
+        #print(vmax, vmin, vmax - vmin)
+        #plotData(entropy_const, x_patch, y_patch, figname=fig_name_fmt.format(tid), vmax=vmax, vmin=vmin)
+    
 
 
 def plotData(f_patch, x_patch, y_patch, figname="field_vis.png", cmap='gnuplot2_r', vmin=None, vmax=None, rasterized=False, figsize=None):
@@ -41,10 +51,13 @@ def plotData(f_patch, x_patch, y_patch, figname="field_vis.png", cmap='gnuplot2_
 
 
 def loadData(filename : str, patch_size : int = 16):
-    color, p_coord_i, p_coord_j, loc_i, loc_j, x_raw, y_raw, f_raw = np.loadtxt(filename, delimiter=',', skiprows=1, unpack=True)
+    color, p_coord_i, p_coord_j, loc_i, loc_j, x_raw, y_raw, u_raw, v_raw, T_raw, p_raw = np.loadtxt(filename, delimiter=',', skiprows=1, unpack=True)
     assert (len(color) % (patch_size * patch_size)) == 0, f"Data size {len(color)} is incompatible with the specified patch size {patch_size}."
     num_patches = len(color) // (patch_size * patch_size)
-    f_patch = np.empty((num_patches, patch_size, patch_size), dtype=np.dtype(np.float64, align=True))
+    u_patch = np.empty((num_patches, patch_size, patch_size), dtype=np.dtype(np.float64, align=True))
+    v_patch = np.empty((num_patches, patch_size, patch_size), dtype=np.dtype(np.float64, align=True))
+    T_patch = np.empty((num_patches, patch_size, patch_size), dtype=np.dtype(np.float64, align=True))
+    p_patch = np.empty((num_patches, patch_size, patch_size), dtype=np.dtype(np.float64, align=True))
     x_patch = np.empty((num_patches, patch_size, patch_size), dtype=np.dtype(np.float64, align=True))
     y_patch = np.empty((num_patches, patch_size, patch_size), dtype=np.dtype(np.float64, align=True))
     patch_coord_i = np.empty((num_patches, ), dtype=np.dtype(np.int32, align=True))
@@ -52,13 +65,16 @@ def loadData(filename : str, patch_size : int = 16):
     num_elem_per_patch = patch_size * patch_size
     for pid in range(num_patches):
         idx_start = pid * num_elem_per_patch
-        f_patch[pid, :, :] = f_raw[idx_start:idx_start + num_elem_per_patch].reshape((patch_size, patch_size))
+        u_patch[pid, :, :] = u_raw[idx_start:idx_start + num_elem_per_patch].reshape((patch_size, patch_size))
+        v_patch[pid, :, :] = v_raw[idx_start:idx_start + num_elem_per_patch].reshape((patch_size, patch_size))
+        T_patch[pid, :, :] = T_raw[idx_start:idx_start + num_elem_per_patch].reshape((patch_size, patch_size))
+        p_patch[pid, :, :] = p_raw[idx_start:idx_start + num_elem_per_patch].reshape((patch_size, patch_size))
         x_patch[pid, :, :] = x_raw[idx_start:idx_start + num_elem_per_patch].reshape((patch_size, patch_size))
         y_patch[pid, :, :] = y_raw[idx_start:idx_start + num_elem_per_patch].reshape((patch_size, patch_size))
         patch_coord_i[pid] = p_coord_i[idx_start]
         patch_coord_j[pid] = p_coord_j[idx_start]
 
-    return f_patch, x_patch, y_patch
+    return u_patch, v_patch, T_patch, p_patch, x_patch, y_patch
 
 
 if __name__ == "__main__":
