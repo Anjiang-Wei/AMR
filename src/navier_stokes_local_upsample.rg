@@ -54,6 +54,7 @@ end
 
 
 -- Calculate velocity gradient tensor at collocated points
+__demand(__leaf)
 task solver.calcGradVelColl(
     grad_vel_coll_patch : region(ispace(int3d), GRAD_VEL),      -- patch that only contains the interior region
     c_vars_now_patch    : region(ispace(int3d), CVARS),         -- patch including the halo layer on each side
@@ -123,6 +124,7 @@ local terra primitiveToConservative (u : double, v : double, T : double, p : dou
 end
 
 -- Calculate the right-hand side of the NS equations
+__demand(__leaf)
 task solver.calcRHSLeaf(
     c_vars_ddt_patch    : region(ispace(int3d), CVARS   ),     -- patch that only contains the interior region
     c_vars_now_patch    : region(ispace(int3d), CVARS   ),     -- patch including the halo layer on each side
@@ -271,11 +273,20 @@ function SSPRK3Stage(stage)
             writes(u1)
         do
             var offset_0 = u0.bounds.lo - u1.bounds.lo;
+            __demand(__vectorize)
             for cij in u1.ispace do
-                u1[cij].mass = u0[cij + offset_0].mass + u1[cij].mass * dt
-                u1[cij].mmtx = u0[cij + offset_0].mmtx + u1[cij].mmtx * dt
-                u1[cij].mmty = u0[cij + offset_0].mmty + u1[cij].mmty * dt
-                u1[cij].enrg = u0[cij + offset_0].enrg + u1[cij].enrg * dt
+                u1[cij].mass *= dt
+                u1[cij].mmtx *= dt
+                u1[cij].mmty *= dt
+                u1[cij].enrg *= dt
+                u1[cij].mass += u0[cij + offset_0].mass
+                u1[cij].mmtx += u0[cij + offset_0].mmtx
+                u1[cij].mmty += u0[cij + offset_0].mmty
+                u1[cij].enrg += u0[cij + offset_0].enrg
+                --u1[cij].mass = u0[cij + offset_0].mass + u1[cij].mass * dt
+                --u1[cij].mmtx = u0[cij + offset_0].mmtx + u1[cij].mmtx * dt
+                --u1[cij].mmty = u0[cij + offset_0].mmty + u1[cij].mmty * dt
+                --u1[cij].enrg = u0[cij + offset_0].enrg + u1[cij].enrg * dt
             end
         end
         return ssprk3Stage
@@ -293,11 +304,20 @@ function SSPRK3Stage(stage)
         do
             var offset_0 = u0.bounds.lo - u2.bounds.lo
             var offset_1 = u1.bounds.lo - u2.bounds.lo
+            __demand(__vectorize)
             for cij in u2.ispace do
-                u2[cij].mass = 0.75 * u0[cij + offset_0].mass + 0.25 * (u1[cij + offset_1].mass + u2[cij].mass * dt)
-                u2[cij].mmtx = 0.75 * u0[cij + offset_0].mmtx + 0.25 * (u1[cij + offset_1].mmtx + u2[cij].mmtx * dt)
-                u2[cij].mmty = 0.75 * u0[cij + offset_0].mmty + 0.25 * (u1[cij + offset_1].mmty + u2[cij].mmty * dt)
-                u2[cij].enrg = 0.75 * u0[cij + offset_0].enrg + 0.25 * (u1[cij + offset_1].enrg + u2[cij].enrg * dt)
+                u2[cij].mass *= 0.25 * dt
+                u2[cij].mmtx *= 0.25 * dt
+                u2[cij].mmty *= 0.25 * dt
+                u2[cij].enrg *= 0.25 * dt
+                u2[cij].mass += 0.75 * u0[cij + offset_0].mass + 0.25 * u1[cij + offset_1].mass
+                u2[cij].mmtx += 0.75 * u0[cij + offset_0].mmtx + 0.25 * u1[cij + offset_1].mmtx
+                u2[cij].mmty += 0.75 * u0[cij + offset_0].mmty + 0.25 * u1[cij + offset_1].mmty
+                u2[cij].enrg += 0.75 * u0[cij + offset_0].enrg + 0.25 * u1[cij + offset_1].enrg
+                -- u2[cij].mass = 0.75 * u0[cij + offset_0].mass + 0.25 * (u1[cij + offset_1].mass + u2[cij].mass * dt)
+                -- u2[cij].mmtx = 0.75 * u0[cij + offset_0].mmtx + 0.25 * (u1[cij + offset_1].mmtx + u2[cij].mmtx * dt)
+                -- u2[cij].mmty = 0.75 * u0[cij + offset_0].mmty + 0.25 * (u1[cij + offset_1].mmty + u2[cij].mmty * dt)
+                -- u2[cij].enrg = 0.75 * u0[cij + offset_0].enrg + 0.25 * (u1[cij + offset_1].enrg + u2[cij].enrg * dt)
             end
         end
         return ssprk3Stage
@@ -315,11 +335,20 @@ function SSPRK3Stage(stage)
         do
             var offset_1 = u1.bounds.lo - u0.bounds.lo
             var offset_2 = u2.bounds.lo - u0.bounds.lo
+            __demand(__vectorize)
             for cij in u0.ispace do
-                u0[cij].mass = (1.0/3.0) * u0[cij].mass + (2.0/3.0) * (u2[cij + offset_2].mass + u1[cij + offset_1].mass * dt)
-                u0[cij].mmtx = (1.0/3.0) * u0[cij].mmtx + (2.0/3.0) * (u2[cij + offset_2].mmtx + u1[cij + offset_1].mmtx * dt)
-                u0[cij].mmty = (1.0/3.0) * u0[cij].mmty + (2.0/3.0) * (u2[cij + offset_2].mmty + u1[cij + offset_1].mmty * dt)
-                u0[cij].enrg = (1.0/3.0) * u0[cij].enrg + (2.0/3.0) * (u2[cij + offset_2].enrg + u1[cij + offset_1].enrg * dt)
+                u0[cij].mass *= 1.0 / 3.0
+                u0[cij].mmtx *= 1.0 / 3.0
+                u0[cij].mmty *= 1.0 / 3.0
+                u0[cij].enrg *= 1.0 / 3.0
+                u0[cij].mass += (2.0 / 3.0) * u2[cij + offset_2].mass + (2.0 / 3.0) * u1[cij + offset_1].mass * dt
+                u0[cij].mmtx += (2.0 / 3.0) * u2[cij + offset_2].mmtx + (2.0 / 3.0) * u1[cij + offset_1].mmtx * dt
+                u0[cij].mmty += (2.0 / 3.0) * u2[cij + offset_2].mmty + (2.0 / 3.0) * u1[cij + offset_1].mmty * dt
+                u0[cij].enrg += (2.0 / 3.0) * u2[cij + offset_2].enrg + (2.0 / 3.0) * u1[cij + offset_1].enrg * dt
+                -- u0[cij].mass = (1.0/3.0) * u0[cij].mass + (2.0/3.0) * (u2[cij + offset_2].mass + u1[cij + offset_1].mass * dt)
+                -- u0[cij].mmtx = (1.0/3.0) * u0[cij].mmtx + (2.0/3.0) * (u2[cij + offset_2].mmtx + u1[cij + offset_1].mmtx * dt)
+                -- u0[cij].mmty = (1.0/3.0) * u0[cij].mmty + (2.0/3.0) * (u2[cij + offset_2].mmty + u1[cij + offset_1].mmty * dt)
+                -- u0[cij].enrg = (1.0/3.0) * u0[cij].enrg + (2.0/3.0) * (u2[cij + offset_2].enrg + u1[cij + offset_1].enrg * dt)
             end
         end
         return ssprk3Stage
@@ -330,6 +359,7 @@ end
 
 -- Inner task RHS
 task solver.calcRHSLaunch(
+     level                           : int,
      rgn_cvars_ddt                   : region(ispace(int3d), CVARS   ),
      rgn_cvars_now                   : region(ispace(int3d), CVARS   ),
      rgn_grad_vel_coll               : region(ispace(int3d), GRAD_VEL),
@@ -368,7 +398,8 @@ where
     reads(rgn_grid, rgn_meta),
     reads writes(rgn_cvars_now, rgn_grad_vel_coll)
 do
-    [grid.fillGhosts(CVARS)](
+    [grid.fillGhostsLevel(CVARS)](
+        level,
         rgn_meta, part_meta, rgn_cvars_now,
         part_cvars_now_i_prev_send,
         part_cvars_now_i_next_send,
@@ -381,11 +412,12 @@ do
     );
     for color in part_meta.colors do
         var pid = int1d(color);
-        if (part_meta[color][color].level > (-1)) then
+        if (part_meta[color][color].level == level) then
             solver.calcGradVelColl(part_grad_vel_coll_int[pid], part_cvars_now_all[pid], part_meta[pid]);
         end
     end
-    [grid.fillGhosts(GRAD_VEL)](
+    [grid.fillGhostsLevel(GRAD_VEL)](
+        level,
         rgn_meta, part_meta, rgn_grad_vel_coll,
         part_grad_vel_coll_i_prev_send,
         part_grad_vel_coll_i_next_send,
@@ -399,7 +431,7 @@ do
     -- fill(rgn_cvars_ddt.{mass, mmtx, mmty, enrg}, 0.0);
     for color in part_meta.colors do
         var pid = int1d(color);
-        if (part_meta[color][color].level > (-1)) then
+        if (part_meta[color][color].level == level) then
             solver.calcRHSLeaf(part_cvars_ddt_int[pid], part_cvars_now_all[pid], part_grad_vel_coll_all[pid], part_grid[pid], part_meta[pid]);
         end
     end
@@ -409,6 +441,7 @@ end
 
 -- Conduct RK3 update
 task solver.SSPRK3Launch(
+    level                           : int,
     dt                              : double,
     rgn_cvars_0                     : region(ispace(int3d), CVARS   ),
     rgn_cvars_1                     : region(ispace(int3d), CVARS   ),
@@ -471,6 +504,7 @@ do
 
     -- Stage 0
     solver.calcRHSLaunch(
+        level,
         rgn_cvars_1, rgn_cvars_0, rgn_grad_vel_coll, rgn_grid, rgn_meta, part_cvars_1_int,
         part_cvars_0_int,
         part_cvars_0_all,
@@ -496,13 +530,14 @@ do
     )
     for color in part_meta.colors do
         var pid = int1d(color);
-        if (part_meta[color][color].level > (-1)) then
+        if (part_meta[color][color].level == level) then
             [SSPRK3Stage(0)](dt, part_cvars_0_int[pid], part_cvars_1_int[pid]);
         end
     end
 
     -- Stage 1
     solver.calcRHSLaunch(
+        level,
         rgn_cvars_2, rgn_cvars_1, rgn_grad_vel_coll, rgn_grid, rgn_meta, part_cvars_2_int,
         part_cvars_1_int,
         part_cvars_1_all,
@@ -528,13 +563,14 @@ do
     )
     for color in part_meta.colors do
         var pid = int1d(color);
-        if (part_meta[color][color].level > (-1)) then
+        if (part_meta[color][color].level == level) then
             [SSPRK3Stage(1)](dt, part_cvars_0_int[pid], part_cvars_1_int[pid], part_cvars_2_int[pid]);
         end
     end
 
     -- Stage 2
     solver.calcRHSLaunch(
+        level,
         rgn_cvars_1, rgn_cvars_2, rgn_grad_vel_coll, rgn_grid, rgn_meta, part_cvars_1_int,
         part_cvars_2_int,
         part_cvars_2_all,
@@ -560,7 +596,7 @@ do
     )
     for color in part_meta.colors do
         var pid = int1d(color);
-        if (part_meta[color][color].level > (-1)) then
+        if (part_meta[color][color].level == level) then
             [SSPRK3Stage(2)](dt, part_cvars_0_int[pid], part_cvars_1_int[pid], part_cvars_2_int[pid]);
         end
     end
@@ -569,6 +605,7 @@ end
 
 local task dumpDensity(
     fname          :  rawstring,
+    level          :  int,
     rgn_cvars      :  region(ispace(int3d), CVARS),
     rgn_grid       :  region(ispace(int3d), grid_fsp),    
     rgn_meta       :  region(ispace(int1d), grid_meta_fsp),
@@ -582,7 +619,7 @@ do
     --c.fprintf(file, "%8s, %8s, %8s, %8s, %8s, %23s, %23s, %23s\n", "color_id", "patch_i", "patch_j", "local_i", "local_j", "x", "y", "density")
     c.fprintf(file, "%8s, %8s, %8s, %8s, %8s, %23s, %23s, %23s, %23s, %23s, %23s\n", "color_id", "patch_i", "patch_j", "local_i", "local_j", "x", "y", "vel-x", "vel-y", "temperature", "pressure")
     for pid in rgn_meta.ispace do
-        if rgn_meta[pid].level > -1 then
+        if rgn_meta[pid].level == level then
             var cvars_patch = patches_cvars[pid]
             var grid_patch = patches_grid[pid]
             for cij in cvars_patch.ispace do
@@ -600,8 +637,41 @@ do
     c.fclose(file)
 end
 
+task solver.setRefineFlagsLeaf(
+    rgn_patch_meta  : region(ispace(int1d), grid_meta_fsp),
+    rgn_patch_cvars : region(ispace(int3d),         CVARS)
+)
+where
+    reads (rgn_patch_cvars),
+    reads writes (rgn_patch_meta)
+do
+    var isp = rgn_patch_cvars.ispace
+    var pid = isp.bounds.lo.x
+    var T0  = 1.0 / (eos.Rg * eos.gamma)
+    var U0  = 0.5 * cmath.sqrt(eos.gamma * eos.Rg * T0)
 
-task solver.setRefineCoarsenFlagsLeaf(
+
+    var threshold : double = 0;
+    if (rgn_patch_meta[int1d(pid)].level == 0) then
+        threshold = 0.98
+    elseif (rgn_patch_meta[int1d(pid)].level == 1) then
+        threshold = 0.0 -- 0.88
+    end
+
+    -- Set refine flag
+    var count : int = 0;
+    for ij in isp do
+        count += int(rgn_patch_cvars[ij].mass < threshold)
+    end
+    if (count > 2) then
+        rgn_patch_meta[int1d(pid)].refine_req = true;
+    else
+        rgn_patch_meta[int1d(pid)].refine_req = false;
+    end
+end
+
+
+task solver.setCoarsenFlagsLeaf(
     rgn_patch_meta  : region(ispace(int1d), grid_meta_fsp),
     rgn_patch_cvars : region(ispace(int3d),         CVARS)
 )
@@ -616,39 +686,28 @@ do
 
     var threshold : double = 99999.9;
     if (rgn_patch_meta[int1d(pid)].level == 0) then
-        threshold = 0.0225
+        threshold = 0.98
     elseif (rgn_patch_meta[int1d(pid)].level == 1) then
-        threshold = 0.0090
-    end
-
-    -- Set refine flag
-    var count : int = 0;
-    for ij in isp do
-        var u : double = rgn_patch_cvars[ij].mmtx / rgn_patch_cvars[ij].mass - U0
-        var v : double = rgn_patch_cvars[ij].mmty / rgn_patch_cvars[ij].mass
-        count += int((u * u + v * v) > threshold)
-    end
-    if (count > 10) then
-        rgn_patch_meta[int1d(pid)].refine_req = true;
+        threshold = 9999.9-- 0.88
     end
 
     -- Set coarsen flag
-    count = 0
-    threshold = -1.0
-    if (rgn_patch_meta[int1d(pid)].level == 1) then
-        threshold = 0.0225
-    elseif (rgn_patch_meta[int1d(pid)].level == 2) then
-        threshold = 0.0090
-    end
+    var count = 0
     for ij in isp do
-        var u : double = rgn_patch_cvars[ij].mmtx / rgn_patch_cvars[ij].mass - U0
-        var v : double = rgn_patch_cvars[ij].mmty / rgn_patch_cvars[ij].mass
-        count += int((u * u + v * v) < threshold)
+        count += int(rgn_patch_cvars[ij].mass > threshold)
     end
-    if (count > 10) then
+    if (count > (16*16)) then
         rgn_patch_meta[int1d(pid)].coarsen_req = true;
+        if (rgn_patch_meta[int1d(pid)].child[0] > -1) then
+            rgn_patch_meta[int1d(rgn_patch_meta[int1d(pid)].child[0])].coarsen_req = true
+            rgn_patch_meta[int1d(rgn_patch_meta[int1d(pid)].child[1])].coarsen_req = true
+            rgn_patch_meta[int1d(rgn_patch_meta[int1d(pid)].child[2])].coarsen_req = true
+            rgn_patch_meta[int1d(rgn_patch_meta[int1d(pid)].child[3])].coarsen_req = true
+        end
     end
 end
+
+
 
 task solver.adjustMesh(
     rgn_patches_meta  : region(ispace(int1d), grid_meta_fsp),
@@ -661,7 +720,53 @@ task solver.adjustMesh(
 where
     reads writes (rgn_patches_meta, rgn_patches_grid, rgn_patches_cvars)
 do 
+    for l = 0, 1 do
+        for color in patches_meta.colors do
+            if (patches_meta[int1d(color)][int1d(color)].level > -1) then
+                solver.setRefineFlagsLeaf(patches_meta[int1d(color)], patches_cvars_int[int1d(color)])
+            end
+        end
+        grid.refineInit(rgn_patches_meta, patches_meta)
+        grid.refineEnd(rgn_patches_meta)
+    end
+
+    for l = 0, 1 do
+        for color in patches_meta.colors do
+            if (patches_meta[int1d(color)][int1d(color)].level > -1) then
+                solver.setCoarsenFlagsLeaf(patches_meta[int1d(color)], patches_cvars_int[int1d(color)])
+            end
+        end
+        grid.coarsenInit(rgn_patches_meta, patches_meta)
+        grid.coarsenEnd(rgn_patches_meta, patches_meta)
+    end
 end
+
+
+
+
+local task writeActiveMeta(
+    fname               : rawstring,
+    meta_patches_region : region(ispace(int1d), grid_meta_fsp),
+    meta_patches        : partition(disjoint, complete, meta_patches_region, ispace(int1d))
+)
+where
+    reads (meta_patches_region)
+do
+    var file = c.fopen(fname, "w")
+    c.fprintf(file, "%7s, %7s, %7s, %7s, %7s, %7s, %7s, %7s, %7s, %7s, %7s, %7s, %7s, %7s, %7s\n",
+                "pid", "level", "i_coord", "j_coord", "i_prev", "i_next", "j_prev", "j_next", "parent", "child0", "child1", "child2", "child3", "r_req", "c_req");
+    for pid in meta_patches.colors do
+        var patch = meta_patches[pid][pid]
+        if (patch.level > -1) then
+            c.fprintf(file, "%7d, %7d, %7d, %7d, %7d, %7d, %7d, %7d, %7d, %7d, %7d, %7d, %7d, %7d, %7d\n",
+                int(pid), patch.level, patch.i_coord, patch.j_coord,
+                patch.i_prev, patch.i_next, patch.j_prev, patch.j_next,
+                patch.parent, patch.child[0], patch.child[1], patch.child[2], patch.child[3],
+                patch.refine_req, patch.coarsen_req);
+        end
+    end -- for pid
+    c.fclose(file)
+end -- task
 
 
 task solver.main()
@@ -780,7 +885,9 @@ task solver.main()
     -- TODO: Set coordinate on refined mesh
     -- TODO: Redo setInitialCondition on refined mesh
 
-    dumpDensity("density_000000.dat", rgn_patches_cvars_0, rgn_patches_grid, rgn_patches_meta, patches_cvars_0_int, patches_grid_int);
+    solver.adjustMesh(rgn_patches_meta, rgn_patches_grid, rgn_patches_cvars_0, patches_meta, patches_grid_int, patches_cvars_0_int);
+    dumpDensity("density_000000.dat", 0, rgn_patches_cvars_0, rgn_patches_grid, rgn_patches_meta, patches_cvars_0_int, patches_grid_int);
+    writeActiveMeta("mesh_000000.dat", rgn_patches_meta, patches_meta);
     --
     --
     -- TODO: Recursively refine mesh to higher levels
@@ -801,6 +908,7 @@ task solver.main()
     -- end
     for i = 0, loop_cnt do
         solver.SSPRK3Launch(
+            0,
             time_step,
             rgn_patches_cvars_0,
             rgn_patches_cvars_1,
@@ -857,12 +965,16 @@ task solver.main()
             patches_meta
         );
 
-        var filename : &int8 = [&int8] (c.malloc(64*8))
         if i % stride == 0 then
-            c.sprintf(filename, "density_%06d.dat", i+1);
-            dumpDensity(filename, rgn_patches_cvars_0, rgn_patches_grid, rgn_patches_meta, patches_cvars_0_int, patches_grid_int);
+            var filename_dat : &int8 = [&int8] (c.malloc(64*8))
+            var filename_msh : &int8 = [&int8] (c.malloc(64*8))
+            c.sprintf(filename_dat, "density_%06d.dat", i+1);
+            c.sprintf(filename_msh, "mesh_%06d.dat", i+1);
+            dumpDensity(filename_dat, 0, rgn_patches_cvars_0, rgn_patches_grid, rgn_patches_meta, patches_cvars_0_int, patches_grid_int);
+            writeActiveMeta(filename_msh, rgn_patches_meta, patches_meta);
         end
         -- c.free(filename); -- should not free until dumpDensity finishes
+        solver.adjustMesh(rgn_patches_meta, rgn_patches_grid, rgn_patches_cvars_0, patches_meta, patches_grid_int, patches_cvars_0_int);
     end
 
 end
