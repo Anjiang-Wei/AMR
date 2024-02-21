@@ -54,7 +54,7 @@ end
 
 
 -- Calculate velocity gradient tensor at collocated points
-__demand(__leaf)
+__demand(__leaf, __inline)
 task solver.calcGradVelColl(
     grad_vel_coll_patch : region(ispace(int3d), GRAD_VEL),      -- patch that only contains the interior region
     c_vars_now_patch    : region(ispace(int3d), CVARS),         -- patch including the halo layer on each side
@@ -124,7 +124,7 @@ local terra primitiveToConservative (u : double, v : double, T : double, p : dou
 end
 
 -- Calculate the right-hand side of the NS equations
-__demand(__leaf)
+__demand(__leaf, __inline)
 task solver.calcRHSLeaf(
     c_vars_ddt_patch    : region(ispace(int3d), CVARS   ),     -- patch that only contains the interior region
     c_vars_now_patch    : region(ispace(int3d), CVARS   ),     -- patch including the halo layer on each side
@@ -637,6 +637,7 @@ do
     c.fclose(file)
 end
 
+__demand(__inline)
 task solver.setRefineFlagsLeaf(
     rgn_patch_meta  : region(ispace(int1d), grid_meta_fsp),
     rgn_patch_cvars : region(ispace(int3d),         CVARS)
@@ -670,7 +671,7 @@ do
     end
 end
 
-
+__demand(__inline)
 task solver.setCoarsenFlagsLeaf(
     rgn_patch_meta  : region(ispace(int1d), grid_meta_fsp),
     rgn_patch_cvars : region(ispace(int3d),         CVARS)
