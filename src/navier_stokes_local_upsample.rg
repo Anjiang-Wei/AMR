@@ -687,8 +687,8 @@ do
 
     var threshold : double = 99999.9;
     if (rgn_patch_meta[int1d(pid)].level == 0) then
-        threshold = 0.98
-    elseif (rgn_patch_meta[int1d(pid)].level == 1) then
+        threshold = 0.99
+    else
         threshold = 9999.9-- 0.88
     end
 
@@ -697,8 +697,8 @@ do
     for ij in isp do
         count += int(rgn_patch_cvars[ij].mass > threshold)
     end
-    if (count > (16*16)) then
-        rgn_patch_meta[int1d(pid)].coarsen_req = true;
+    if (count > 254) then
+        --rgn_patch_meta[int1d(pid)].coarsen_req = true;
         if (rgn_patch_meta[int1d(pid)].child[0] > -1) then
             rgn_patch_meta[int1d(rgn_patch_meta[int1d(pid)].child[0])].coarsen_req = true
             rgn_patch_meta[int1d(rgn_patch_meta[int1d(pid)].child[1])].coarsen_req = true
