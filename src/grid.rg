@@ -695,6 +695,7 @@ end
 -- | child[0] | child[1] |
 -- |---------------------| --> i
 --
+__demand(__inline)
 task grid.refineInit(
     meta_patches_region : region(ispace(int1d), grid_meta_fsp),
     meta_patches        : partition(disjoint, complete, meta_patches_region, ispace(int1d))
@@ -849,7 +850,7 @@ do
 end
 
 
-
+__demand(__inline)
 task grid.coarsenInit(
     meta_patches_region : region(ispace(int1d), grid_meta_fsp),
     meta_patches        : partition(disjoint, complete, meta_patches_region, ispace(int1d))
@@ -872,6 +873,7 @@ end
 -- | child[0] | child[1] |
 -- |---------------------| --> i
 --
+__demand(__inline)
 task grid.coarsenEnd(
     meta_patches_region : region(ispace(int1d), grid_meta_fsp),
     meta_patches        : partition(disjoint, complete, meta_patches_region, ispace(int1d))
@@ -904,7 +906,7 @@ end
 -- | child[0] | child[1] |
 -- |---------------------| --> i
 --
-__demand(__local)
+__demand(__inline)
 task grid.upsample (
     parent : region(ispace(int3d), double), -- full patch
     child0 : region(ispace(int3d), double), -- interior patch
@@ -939,7 +941,7 @@ end
 -- | child[0] | child[1] |
 -- |---------------------| --> i
 --
-__demand(__local)
+__demand(__inline)
 task grid.downsample (
     child0 : region(ispace(int3d), double), -- full patch
     child1 : region(ispace(int3d), double), -- full patch

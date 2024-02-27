@@ -34,5 +34,15 @@ terra numerics.midInterp(fm2 : double, fm1 : double, fp1 : double, fp2 : double)
     return (9.0/16.0) * (fp1 + fm1) - (1.0/16.0) * (fp2 + fm2);
 end
 
+
+-- Upsampling interpolation operator to get the solution on the left
+--     x[i-2]  x[i-1]   x[i]   x[i+1]  x[i+2]
+--                   |-o-|---|
+--   |---o---|---o---|---o---|---o---|---o---|
+--      fm2     fm1      ^      fp1     fp2
+terra numerics.upSample(fm2 : double, fm1 : double, f00 : double, fp1 : double, fp2 : double) : double
+    return -(45./2048) * fm2 + (105./512.) * fm1 + (945./1024.) * f00 - (63./512) * fp1 + (35./2048.) * fp2
+end
+
 return numerics
 
