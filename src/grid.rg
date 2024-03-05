@@ -1,5 +1,6 @@
 import "regent"
 local usr_config = require("input")
+local numerics   = require("numerics")
 local c          = regentlib.c
 local math       = terralib.includec("math.h")
 
@@ -895,6 +896,95 @@ end
 
 
 
+-- -- Upsample from parent to children
+-- -- Parent needs to have valid ghost values
+-- --
+-- -- ^ j
+-- -- |
+-- -- |---------------------|
+-- -- | child[2] | child[3] |
+-- -- |----------+----------|
+-- -- | child[0] | child[1] |
+-- -- |---------------------| --> i
+-- --
+-- __demand(__inline)
+-- task grid.upsample (
+--     parent : region(ispace(int3d), double), -- full patch
+--     child0 : region(ispace(int3d), double), -- interior patch
+--     child1 : region(ispace(int3d), double), -- interior patch
+--     child2 : region(ispace(int3d), double), -- interior patch
+--     child3 : region(ispace(int3d), double)  -- interior patch
+-- )
+-- where
+--     reads(parent),
+--     writes(child0, child1, child2, child3)
+-- do
+--     -- cij means color-i-j
+--     for cij in child0.ispace do
+--         -- TODO
+--         child0[cij] = parent[cij] -- placeholder scheme
+--         child1[cij] = parent[cij] -- placeholder scheme
+--         child2[cij] = parent[cij] -- placeholder scheme
+--         child3[cij] = parent[cij] -- placeholder scheme
+--     end
+-- end
+
+
+
+-- -- Downsample from children to parent
+-- -- All children to have valid ghost values
+-- --
+-- -- ^ j
+-- -- |
+-- -- |---------------------|
+-- -- | child[2] | child[3] |
+-- -- |----------+----------|
+-- -- | child[0] | child[1] |
+-- -- |---------------------| --> i
+-- --
+-- __demand(__inline)
+-- task grid.downsample (
+--     child0 : region(ispace(int3d), double), -- full patch
+--     child1 : region(ispace(int3d), double), -- full patch
+--     child2 : region(ispace(int3d), double), -- full patch
+--     child3 : region(ispace(int3d), double), -- full patch
+--     parent : region(ispace(int3d), double)  -- interior patch
+-- )
+-- where
+--     reads(child0, child1, child2, child3),
+--     writes(parent)
+-- do
+--     -- cij means color-i-j
+--     for cij in parent.ispace do
+--         var child_i_loc : int = int(cij.y >= (grid.patch_size / 2))
+--         var child_j_loc : int = int(cij.z >= (grid.patch_size / 2))
+--         var child_loc   : int = child_i_loc + child_j_loc * 2
+--         -- TODO
+--         if     (child_loc == 0) then parent[cij] = child0[int3d({cij.x, cij.y, cij.z})] -- placeholder scheme
+--         elseif (child_loc == 1) then parent[cij] = child1[int3d({cij.x, cij.y, cij.z})] -- placeholder scheme
+--         elseif (child_loc == 2) then parent[cij] = child2[int3d({cij.x, cij.y, cij.z})] -- placeholder scheme
+--         elseif (child_loc == 3) then parent[cij] = child3[int3d({cij.x, cij.y, cij.z})] -- placeholder scheme
+--         end
+--     end
+-- end
+
+-- Read from data patches, and set refine/coarsen flags in meta patches
+task grid.setRefineCoarsenFlags(
+    patches_grid_region : region(ispace(int3d), grid_fsp),
+    patches_grid        : partition(disjoint, complete, patches_grid_region, ispace(int1d)),
+    meta_patches_region : region(ispace(int1d), grid_meta_fsp),
+    meta_patches        : partition(disjoint, complete, meta_patches_region, ispace(int1d))
+)
+where
+    reads (patches_grid_region),
+    writes (meta_patches_region.{refine_req, coarsen_req})
+do
+
+end
+
+
+
+
 -- Upsample from parent to children
 -- Parent needs to have valid ghost values
 --
@@ -918,14 +1008,93 @@ where
     reads(parent),
     writes(child0, child1, child2, child3)
 do
-    -- cij means color-i-j
-    for cij in child0.ispace do
-        -- TODO
-        child0[cij] = parent[cij] -- placeholder scheme
-        child1[cij] = parent[cij] -- placeholder scheme
-        child2[cij] = parent[cij] -- placeholder scheme
-        child3[cij] = parent[cij] -- placeholder scheme
+    var parent_pid : int = int(parent.ispace.bounds.lo.x)
+    var parent_int_isp_bounds_lo : int3d = int3d({parent_pid, child0.ispace.bounds.lo.y, child0.ispace.bounds.lo.z})
+    var parent_int_isp_bounds_hi : int3d = int3d({parent_pid, child0.ispace.bounds.hi.y, child0.ispace.bounds.hi.z})
+    var isp_int = ispace(int3d, parent_int_isp_bounds_hi - parent_int_isp_bounds_lo + int3d({1, 1, 1}), parent_int_isp_bounds_lo)
+    var cij_0  : int3d = (isp_int.bounds.lo + isp_int.bounds.hi) / int3d({2, 2, 2})
+    for cij in isp_int do
+        var uL_jm2 : double = numerics.upSample(parent[cij+int3d({0, -2,-2})], parent[cij+int3d({0, -1,-2})], parent[cij], parent[cij+int3d({0,  1,-2})], parent[cij+int3d({0,  2,-2})])
+        var uR_jm2 : double = numerics.upSample(parent[cij+int3d({0,  2,-2})], parent[cij+int3d({0,  1,-2})], parent[cij], parent[cij+int3d({0, -1,-2})], parent[cij+int3d({0, -2,-2})])
+        var uL_jm1 : double = numerics.upSample(parent[cij+int3d({0, -2,-1})], parent[cij+int3d({0, -1,-1})], parent[cij], parent[cij+int3d({0,  1,-1})], parent[cij+int3d({0,  2,-1})])
+        var uR_jm1 : double = numerics.upSample(parent[cij+int3d({0,  2,-1})], parent[cij+int3d({0,  1,-1})], parent[cij], parent[cij+int3d({0, -1,-1})], parent[cij+int3d({0, -2,-1})])
+        var uL_j00 : double = numerics.upSample(parent[cij+int3d({0, -2, 0})], parent[cij+int3d({0, -1, 0})], parent[cij], parent[cij+int3d({0,  1, 0})], parent[cij+int3d({0,  2, 0})])
+        var uR_j00 : double = numerics.upSample(parent[cij+int3d({0,  2, 0})], parent[cij+int3d({0,  1, 0})], parent[cij], parent[cij+int3d({0, -1, 0})], parent[cij+int3d({0, -2, 0})])
+        var uL_jp1 : double = numerics.upSample(parent[cij+int3d({0, -2, 1})], parent[cij+int3d({0, -1, 1})], parent[cij], parent[cij+int3d({0,  1, 1})], parent[cij+int3d({0,  2, 1})])
+        var uR_jp1 : double = numerics.upSample(parent[cij+int3d({0,  2, 1})], parent[cij+int3d({0,  1, 1})], parent[cij], parent[cij+int3d({0, -1, 1})], parent[cij+int3d({0, -2, 1})])
+        var uL_jp2 : double = numerics.upSample(parent[cij+int3d({0, -2, 2})], parent[cij+int3d({0, -1, 2})], parent[cij], parent[cij+int3d({0,  1, 2})], parent[cij+int3d({0,  2, 2})])
+        var uR_jp2 : double = numerics.upSample(parent[cij+int3d({0,  2, 2})], parent[cij+int3d({0,  1, 2})], parent[cij], parent[cij+int3d({0, -1, 2})], parent[cij+int3d({0, -2, 2})])
+        --  ---------
+        -- | LR | RR |
+        -- |----|----|
+        -- | LL | RL |
+        --  ---------
+        var uLL : double = numerics.upSample(uL_jm2, uL_jm1, uL_j00, uL_jp1, uL_jp2)
+        var uLR : double = numerics.upSample(uL_jp2, uL_jp1, uL_j00, uL_jm1, uL_jm2)
+        var uRL : double = numerics.upSample(uR_jm2, uR_jm1, uR_j00, uR_jp1, uR_jp2)
+        var uRR : double = numerics.upSample(uR_jp2, uR_jp1, uR_j00, uR_jm1, uR_jm2)
+        if     (cij.y <= cij_0.y and cij.z <= cij_0.z) then -- child[0]
+            var pid : int = child0.bounds.lo.x
+            var i_par : int = cij.y
+            var j_par : int = cij.z
+            var child_cij_LL : int3d = int3d({pid, i_par*2    , j_par*2    })
+            var child_cij_LR : int3d = int3d({pid, i_par*2    , j_par*2 + 1})
+            var child_cij_RL : int3d = int3d({pid, i_par*2 + 1, j_par*2    })
+            var child_cij_RR : int3d = int3d({pid, i_par*2 + 1, j_par*2 + 1})
+            child0[child_cij_LL] = uLL
+            child0[child_cij_LR] = uLR
+            child0[child_cij_RL] = uRL
+            child0[child_cij_RR] = uRR
+
+        elseif (cij.y >  cij_0.y and cij.z <= cij_0.z) then -- child[1]
+            var pid : int = child1.bounds.lo.x
+            var i_par : int = cij.y - (cij_0.y + 1)
+            var j_par : int = cij.z
+            var child_cij_LL : int3d = int3d({pid, i_par*2    , j_par*2    })
+            var child_cij_LR : int3d = int3d({pid, i_par*2    , j_par*2 + 1})
+            var child_cij_RL : int3d = int3d({pid, i_par*2 + 1, j_par*2    })
+            var child_cij_RR : int3d = int3d({pid, i_par*2 + 1, j_par*2 + 1})
+            child1[child_cij_LL] = uLL
+            child1[child_cij_LR] = uLR
+            child1[child_cij_RL] = uRL
+            child1[child_cij_RR] = uRR
+
+        elseif (cij.y <= cij_0.y and cij.z >  cij_0.z) then -- child[2]
+            var pid : int = child2.bounds.lo.x
+            var i_par : int = cij.y
+            var j_par : int = cij.z - (cij_0.z + 1)
+            var child_cij_LL : int3d = int3d({pid, i_par*2    , j_par*2    })
+            var child_cij_LR : int3d = int3d({pid, i_par*2    , j_par*2 + 1})
+            var child_cij_RL : int3d = int3d({pid, i_par*2 + 1, j_par*2    })
+            var child_cij_RR : int3d = int3d({pid, i_par*2 + 1, j_par*2 + 1})
+            child2[child_cij_LL] = uLL
+            child2[child_cij_LR] = uLR
+            child2[child_cij_RL] = uRL
+            child2[child_cij_RR] = uRR
+
+        elseif (cij.y >  cij_0.y and cij.z >  cij_0.z) then -- child[3]
+            var pid : int = child3.bounds.lo.x
+            var i_par : int = cij.y - (cij_0.y + 1)
+            var j_par : int = cij.z - (cij_0.z + 1)
+            var child_cij_LL : int3d = int3d({pid, i_par*2    , j_par*2    })
+            var child_cij_LR : int3d = int3d({pid, i_par*2    , j_par*2 + 1})
+            var child_cij_RL : int3d = int3d({pid, i_par*2 + 1, j_par*2    })
+            var child_cij_RR : int3d = int3d({pid, i_par*2 + 1, j_par*2 + 1})
+            child3[child_cij_LL] = uLL
+            child3[child_cij_LR] = uLR
+            child3[child_cij_RL] = uRL
+            child3[child_cij_RR] = uRR
+
+        end
     end
+    ---- cij means color-i-j
+    --for cij in child0.ispace do
+    --    -- TODO
+    --    child0[cij] = parent[cij] -- placeholder scheme
+    --    child1[cij] = parent[cij] -- placeholder scheme
+    --    child2[cij] = parent[cij] -- placeholder scheme
+    --    child3[cij] = parent[cij] -- placeholder scheme
+    --end
 end
 
 
@@ -966,22 +1135,6 @@ do
         end
     end
 end
-
--- Read from data patches, and set refine/coarsen flags in meta patches
-task grid.setRefineCoarsenFlags(
-    patches_grid_region : region(ispace(int3d), grid_fsp),
-    patches_grid        : partition(disjoint, complete, patches_grid_region, ispace(int1d)),
-    meta_patches_region : region(ispace(int1d), grid_meta_fsp),
-    meta_patches        : partition(disjoint, complete, meta_patches_region, ispace(int1d))
-)
-where
-    reads (patches_grid_region),
-    writes (meta_patches_region.{refine_req, coarsen_req})
-do
-
-end
-
-
 
 
 return grid
