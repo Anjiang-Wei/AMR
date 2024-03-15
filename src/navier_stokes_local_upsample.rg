@@ -602,6 +602,40 @@ do
     end
 end
 
+local __demand(__inline) task checkNaN(
+    tag     : int,
+    patches : region(ispace(int3d), double)
+)
+where
+    reads (patches)
+do
+    -- format.println("invoking tag = {}", tag);
+    for cij in patches.ispace do
+        if (cmath.isnan(patches[cij]) ~= 0) then
+            -- format.println("tag = {}", tag);
+            regentlib.assert(false, "NaN detected");
+        end
+    end
+end
+
+local __demand(__inline) task checkZero(
+    tag     : int,
+    patches : region(ispace(int3d), double)
+)
+where
+    reads (patches)
+do
+    -- format.println("invoking tag = {}", tag);
+    for cij in patches.ispace do
+        if (patches[cij]*patches[cij] < 1e-32) then
+            format.println("tag = {}", tag);
+            break
+            -- regentlib.assert(false, "Zero detected");
+        end
+    end
+end
+
+
 
 local task dumpDensity(
     fname          :  rawstring,
@@ -617,20 +651,21 @@ where
 do
     var file = c.fopen(fname, "w")
     --c.fprintf(file, "%8s, %8s, %8s, %8s, %8s, %23s, %23s, %23s\n", "color_id", "patch_i", "patch_j", "local_i", "local_j", "x", "y", "density")
-    c.fprintf(file, "%8s, %8s, %8s, %8s, %8s, %23s, %23s, %23s, %23s, %23s, %23s\n", "color_id", "patch_i", "patch_j", "local_i", "local_j", "x", "y", "vel-x", "vel-y", "temperature", "pressure")
+    c.fprintf(file, "%8s, %8s, %8s, %8s, %8s, %8s, %23s, %23s, %23s, %23s, %23s, %23s\n", "color_id", "level", "patch_i", "patch_j", "local_i", "local_j", "x", "y", "vel-x", "vel-y", "temperature", "pressure")
     for pid in rgn_meta.ispace do
-        if rgn_meta[pid].level == level then
+        if rgn_meta[pid].level <= level and rgn_meta[pid].level > -1 then
             var cvars_patch = patches_cvars[pid]
-            var grid_patch = patches_grid[pid]
+            var grid_patch  = patches_grid[pid]
+            var level_ij    = rgn_meta[pid].level
+            var patch_i     = rgn_meta[pid].i_coord
+            var patch_j     = rgn_meta[pid].j_coord
             for cij in cvars_patch.ispace do
-                var patch_i = rgn_meta[pid].i_coord
-                var patch_j = rgn_meta[pid].j_coord
                 -- var density = cvars_patch[cij].mass
                 var pvars = conservativeToPrimitive(cvars_patch[cij].mass, cvars_patch[cij].mmtx, cvars_patch[cij].mmty, cvars_patch[cij].enrg)
                 var x = grid_patch[cij].x
                 var y = grid_patch[cij].y
-                c.fprintf(file, "%8d, %8d, %8d, %8d, %8d, %23.16e, %23.16e, %23.16e, %23.16e, %23.16e, %23.16e\n",
-                                int(pid), patch_i, patch_j, cij.y, cij.z, x, y, pvars.u, pvars.v, pvars.T, pvars.p)
+                c.fprintf(file, "%8d, %8d, %8d, %8d, %8d, %8d, %23.16e, %23.16e, %23.16e, %23.16e, %23.16e, %23.16e\n",
+                                int(pid), level_ij, patch_i, patch_j, cij.y, cij.z, x, y, pvars.u, pvars.v, pvars.T, pvars.p)
             end
         end
     end
@@ -716,7 +751,16 @@ task solver.adjustMesh(
     patches_meta      : partition(disjoint, rgn_patches_meta , ispace(int1d)),
     patches_grid_int  : partition(disjoint, rgn_patches_grid , ispace(int1d)),
     patches_cvars_int : partition(disjoint, rgn_patches_cvars, ispace(int1d)),
-    patches_cvars     : partition(disjoint, rgn_patches_cvars, ispace(int1d))
+    patches_cvars     : partition(disjoint, rgn_patches_cvars, ispace(int1d)),
+    -------------------------------
+    patches_cvars_i_prev_send : partition(disjoint, rgn_patches_cvars, ispace(int1d)),
+    patches_cvars_i_next_send : partition(disjoint, rgn_patches_cvars, ispace(int1d)),
+    patches_cvars_j_prev_send : partition(disjoint, rgn_patches_cvars, ispace(int1d)),
+    patches_cvars_j_next_send : partition(disjoint, rgn_patches_cvars, ispace(int1d)),
+    patches_cvars_i_prev_recv : partition(disjoint, rgn_patches_cvars, ispace(int1d)),
+    patches_cvars_i_next_recv : partition(disjoint, rgn_patches_cvars, ispace(int1d)),
+    patches_cvars_j_prev_recv : partition(disjoint, rgn_patches_cvars, ispace(int1d)),
+    patches_cvars_j_next_recv : partition(disjoint, rgn_patches_cvars, ispace(int1d))
 )
 where
     reads writes (rgn_patches_meta, rgn_patches_grid, rgn_patches_cvars)
@@ -728,10 +772,27 @@ do
             end
         end
         grid.refineInit(rgn_patches_meta, patches_meta)
-        grid.refineEnd(rgn_patches_meta)
+        if (l > 0) then
+            [grid.fillGhostsLevel(CVARS)](
+                l - 1,
+                rgn_patches_meta, patches_meta, rgn_patches_cvars,
+                patches_cvars_i_prev_send,
+                patches_cvars_i_next_send,
+                patches_cvars_j_prev_send,
+                patches_cvars_j_next_send,
+                patches_cvars_i_prev_recv,
+                patches_cvars_i_next_recv,
+                patches_cvars_j_prev_recv,
+                patches_cvars_j_next_recv
+            );
+        end
         for color in patches_meta.colors do
             var parent_meta = patches_meta[int1d(color)][int1d(color)]
-            if (parent_meta.level == l and parent_meta.child[0] > -1) then
+            if (parent_meta.level > -1 and parent_meta.level == l - 1 and parent_meta.refine_req) then
+                solver.setGridPointCoordinates(patches_grid_int[int1d(parent_meta.child[0])], patches_meta[int1d(parent_meta.child[0])])
+                solver.setGridPointCoordinates(patches_grid_int[int1d(parent_meta.child[1])], patches_meta[int1d(parent_meta.child[1])])
+                solver.setGridPointCoordinates(patches_grid_int[int1d(parent_meta.child[2])], patches_meta[int1d(parent_meta.child[2])])
+                solver.setGridPointCoordinates(patches_grid_int[int1d(parent_meta.child[3])], patches_meta[int1d(parent_meta.child[3])])
                 grid.upsample (
                     patches_cvars[int1d(color)].{mass},
                     patches_cvars_int[int1d(parent_meta.child[0])].{mass},
@@ -762,17 +823,67 @@ do
                 )
             end
         end
-    end
-
-    for l = grid.level_max, 0, -1 do
+        [grid.fillGhostsLevel(CVARS)](
+            l,
+            rgn_patches_meta, patches_meta, rgn_patches_cvars,
+            patches_cvars_i_prev_send,
+            patches_cvars_i_next_send,
+            patches_cvars_j_prev_send,
+            patches_cvars_j_next_send,
+            patches_cvars_i_prev_recv,
+            patches_cvars_i_next_recv,
+            patches_cvars_j_prev_recv,
+            patches_cvars_j_next_recv
+        );
         for color in patches_meta.colors do
-            if (patches_meta[int1d(color)][int1d(color)].level == l) then
-                solver.setCoarsenFlagsLeaf(patches_meta[int1d(color)], patches_cvars_int[int1d(color)])
+            var parent_meta = patches_meta[int1d(color)][int1d(color)]
+            if (parent_meta.level == l and parent_meta.child[0] > -1) then
+                solver.setGridPointCoordinates(patches_grid_int[int1d(parent_meta.child[0])], patches_meta[int1d(parent_meta.child[0])])
+                solver.setGridPointCoordinates(patches_grid_int[int1d(parent_meta.child[1])], patches_meta[int1d(parent_meta.child[1])])
+                solver.setGridPointCoordinates(patches_grid_int[int1d(parent_meta.child[2])], patches_meta[int1d(parent_meta.child[2])])
+                solver.setGridPointCoordinates(patches_grid_int[int1d(parent_meta.child[3])], patches_meta[int1d(parent_meta.child[3])])
+                grid.upsample (
+                    patches_cvars[int1d(color)].{mass},
+                    patches_cvars_int[int1d(parent_meta.child[0])].{mass},
+                    patches_cvars_int[int1d(parent_meta.child[1])].{mass},
+                    patches_cvars_int[int1d(parent_meta.child[2])].{mass},
+                    patches_cvars_int[int1d(parent_meta.child[3])].{mass}
+                )
+                grid.upsample (
+                    patches_cvars[int1d(color)].{mmtx},
+                    patches_cvars_int[int1d(parent_meta.child[0])].{mmtx},
+                    patches_cvars_int[int1d(parent_meta.child[1])].{mmtx},
+                    patches_cvars_int[int1d(parent_meta.child[2])].{mmtx},
+                    patches_cvars_int[int1d(parent_meta.child[3])].{mmtx}
+                )
+                grid.upsample (
+                    patches_cvars[int1d(color)].{mmty},
+                    patches_cvars_int[int1d(parent_meta.child[0])].{mmty},
+                    patches_cvars_int[int1d(parent_meta.child[1])].{mmty},
+                    patches_cvars_int[int1d(parent_meta.child[2])].{mmty},
+                    patches_cvars_int[int1d(parent_meta.child[3])].{mmty}
+                )
+                grid.upsample (
+                    patches_cvars[int1d(color)].{enrg},
+                    patches_cvars_int[int1d(parent_meta.child[0])].{enrg},
+                    patches_cvars_int[int1d(parent_meta.child[1])].{enrg},
+                    patches_cvars_int[int1d(parent_meta.child[2])].{enrg},
+                    patches_cvars_int[int1d(parent_meta.child[3])].{enrg}
+                )
             end
         end
-        grid.coarsenInit(rgn_patches_meta, patches_meta)
-        grid.coarsenEnd(rgn_patches_meta, patches_meta)
+        grid.refineEnd(rgn_patches_meta);
     end
+
+    -- for l = grid.level_max, 0, -1 do
+    --     for color in patches_meta.colors do
+    --         if (patches_meta[int1d(color)][int1d(color)].level == l) then
+    --             solver.setCoarsenFlagsLeaf(patches_meta[int1d(color)], patches_cvars_int[int1d(color)])
+    --         end
+    --     end
+    --     grid.coarsenInit(rgn_patches_meta, patches_meta)
+    --     grid.coarsenEnd(rgn_patches_meta, patches_meta)
+    -- end
 end
 
 
@@ -919,8 +1030,10 @@ task solver.main()
     -- TODO: Set coordinate on refined mesh
     -- TODO: Redo setInitialCondition on refined mesh
 
-    solver.adjustMesh(rgn_patches_meta, rgn_patches_grid, rgn_patches_cvars_0, patches_meta, patches_grid_int, patches_cvars_0_int, patches_cvars_0);
-    dumpDensity("density_000000.dat", 0, rgn_patches_cvars_0, rgn_patches_grid, rgn_patches_meta, patches_cvars_0_int, patches_grid_int);
+    solver.adjustMesh(rgn_patches_meta, rgn_patches_grid, rgn_patches_cvars_0, patches_meta, patches_grid_int, patches_cvars_0_int, patches_cvars_0,
+                      patches_cvars_0_i_prev_send, patches_cvars_0_i_next_send, patches_cvars_0_j_prev_send, patches_cvars_0_j_next_send,
+                      patches_cvars_0_i_prev_recv, patches_cvars_0_i_next_recv, patches_cvars_0_j_prev_recv, patches_cvars_0_j_next_recv);
+    dumpDensity("density_000000.dat", grid.level_max, rgn_patches_cvars_0, rgn_patches_grid, rgn_patches_meta, patches_cvars_0_int, patches_grid_int);
     writeActiveMeta("mesh_000000.dat", rgn_patches_meta, patches_meta);
     --
     --
@@ -1004,11 +1117,13 @@ task solver.main()
             var filename_msh : &int8 = [&int8] (c.malloc(64*8))
             c.sprintf(filename_dat, "density_%06d.dat", i+1);
             c.sprintf(filename_msh, "mesh_%06d.dat", i+1);
-            dumpDensity(filename_dat, 0, rgn_patches_cvars_0, rgn_patches_grid, rgn_patches_meta, patches_cvars_0_int, patches_grid_int);
+            dumpDensity(filename_dat, grid.level_max, rgn_patches_cvars_0, rgn_patches_grid, rgn_patches_meta, patches_cvars_0_int, patches_grid_int);
             writeActiveMeta(filename_msh, rgn_patches_meta, patches_meta);
         end
         -- c.free(filename); -- should not free until dumpDensity finishes
-        solver.adjustMesh(rgn_patches_meta, rgn_patches_grid, rgn_patches_cvars_0, patches_meta, patches_grid_int, patches_cvars_0_int, patches_cvars_0);
+        solver.adjustMesh(rgn_patches_meta, rgn_patches_grid, rgn_patches_cvars_0, patches_meta, patches_grid_int, patches_cvars_0_int, patches_cvars_0,
+                          patches_cvars_0_i_prev_send, patches_cvars_0_i_next_send, patches_cvars_0_j_prev_send, patches_cvars_0_j_next_send,
+                          patches_cvars_0_i_prev_recv, patches_cvars_0_i_next_recv, patches_cvars_0_j_prev_recv, patches_cvars_0_j_next_recv);
     end
 
 end

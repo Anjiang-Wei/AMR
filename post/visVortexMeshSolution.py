@@ -1,5 +1,5 @@
-import matplotlib
-matplotlib.use('agg')
+#import matplotlib
+#matplotlib.use('agg')
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -65,20 +65,28 @@ def drawPatch(pid:int, level:int, i_coord:int, j_coord:int, i_prev:int, i_next:i
 
 
 def generateVisData(data_file, cmap='gnuplot2_r', vmin=None, vmax=None, rasterized=False):
-    u_patch, v_patch, T_patch, p_patch, x_patch, y_patch = loadData(data_file, patch_size = 16)
+    u_patch, v_patch, T_patch, p_patch, x_patch, y_patch, levels = loadData(data_file, patch_size = 16)
     f_patch = p_patch / T_patch
     if vmin is None:
         vmin = np.min(f_patch)
     if vmax is None:
         vmax = np.max(f_patch)
 
-    for pid in range(f_patch.shape[0]):
-        plt.pcolormesh(x_patch[pid], y_patch[pid], f_patch[pid], cmap=cmap, vmin=vmin, vmax=vmax, rasterized=rasterized)
+    print(f_patch.shape)
+    print(vmin, vmax)
+
+    level_max = int(np.max(levels) + 1.1)
+    # Which levels to visualize
+    level_list = np.arange(1, 2)
+    for l in level_list:
+        pid_level = np.where(np.int32(levels) == l)[0]
+        for pid in pid_level:
+            plt.pcolormesh(x_patch[pid], y_patch[pid], f_patch[pid], cmap=cmap, vmin=vmin, vmax=vmax, rasterized=rasterized)
     plt.colorbar()
 
 
 def loadData(filename : str, patch_size : int = 16):
-    color, p_coord_i, p_coord_j, loc_i, loc_j, x_raw, y_raw, u_raw, v_raw, T_raw, p_raw = np.loadtxt(filename, delimiter=',', skiprows=1, unpack=True)
+    color, level, p_coord_i, p_coord_j, loc_i, loc_j, x_raw, y_raw, u_raw, v_raw, T_raw, p_raw = np.loadtxt(filename, delimiter=',', skiprows=1, unpack=True)
     assert (len(color) % (patch_size * patch_size)) == 0, f"Data size {len(color)} is incompatible with the specified patch size {patch_size}."
     num_patches = len(color) // (patch_size * patch_size)
     u_patch = np.empty((num_patches, patch_size, patch_size), dtype=np.dtype(np.float64, align=True))
@@ -101,7 +109,7 @@ def loadData(filename : str, patch_size : int = 16):
         patch_coord_i[pid] = p_coord_i[idx_start]
         patch_coord_j[pid] = p_coord_j[idx_start]
 
-    return u_patch, v_patch, T_patch, p_patch, x_patch, y_patch
+    return u_patch, v_patch, T_patch, p_patch, x_patch, y_patch, level[::256]
 
 
 

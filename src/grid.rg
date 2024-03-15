@@ -1,6 +1,7 @@
 import "regent"
 local usr_config = require("input")
 local numerics   = require("numerics")
+local format         = require("std/format")
 local c          = regentlib.c
 local math       = terralib.includec("math.h")
 
@@ -592,10 +593,11 @@ local task getAvailableSegPatches(
     length              : int
 )
 where
-    reads writes atomic(meta_patches_region.level)
+    -- reads writes atomic(meta_patches_region.level)
+    reads writes (meta_patches_region.level)
 do
     var offset     : int = grid.num_base_patches_i * grid.num_base_patches_j
-    var num_checks : int = grid.num_patches_max - offset - length
+    var num_checks : int = grid.num_patches_max - offset - length + 1
     var valid : bool
     for pid in ispace(int1d, num_checks, offset) do
         valid = true
@@ -702,7 +704,8 @@ task grid.refineInit(
     meta_patches        : partition(disjoint, complete, meta_patches_region, ispace(int1d))
 )
 where
-    reads writes atomic(meta_patches_region)
+    reads writes (meta_patches_region)
+    -- reads writes atomic(meta_patches_region)
 do
 
     metaRefineFix(meta_patches_region, meta_patches)
@@ -1013,6 +1016,7 @@ do
     var parent_int_isp_bounds_hi : int3d = int3d({parent_pid, child0.ispace.bounds.hi.y, child0.ispace.bounds.hi.z})
     var isp_int = ispace(int3d, parent_int_isp_bounds_hi - parent_int_isp_bounds_lo + int3d({1, 1, 1}), parent_int_isp_bounds_lo)
     var cij_0  : int3d = (isp_int.bounds.lo + isp_int.bounds.hi) / int3d({2, 2, 2})
+    -- format.println("parent_pid: {}, isp_int : {}, cij_0 : {}", parent_pid, isp_int.bounds, cij_0)
     for cij in isp_int do
         var uL_jm2 : double = numerics.upSample(parent[cij+int3d({0, -2,-2})], parent[cij+int3d({0, -1,-2})], parent[cij], parent[cij+int3d({0,  1,-2})], parent[cij+int3d({0,  2,-2})])
         var uR_jm2 : double = numerics.upSample(parent[cij+int3d({0,  2,-2})], parent[cij+int3d({0,  1,-2})], parent[cij], parent[cij+int3d({0, -1,-2})], parent[cij+int3d({0, -2,-2})])
@@ -1024,15 +1028,26 @@ do
         var uR_jp1 : double = numerics.upSample(parent[cij+int3d({0,  2, 1})], parent[cij+int3d({0,  1, 1})], parent[cij], parent[cij+int3d({0, -1, 1})], parent[cij+int3d({0, -2, 1})])
         var uL_jp2 : double = numerics.upSample(parent[cij+int3d({0, -2, 2})], parent[cij+int3d({0, -1, 2})], parent[cij], parent[cij+int3d({0,  1, 2})], parent[cij+int3d({0,  2, 2})])
         var uR_jp2 : double = numerics.upSample(parent[cij+int3d({0,  2, 2})], parent[cij+int3d({0,  1, 2})], parent[cij], parent[cij+int3d({0, -1, 2})], parent[cij+int3d({0, -2, 2})])
+
+        var uL_im2 : double = numerics.upSample(parent[cij+int3d({0,-2, -2})], parent[cij+int3d({0,-2, -1})], parent[cij], parent[cij+int3d({0,-2,  1})], parent[cij+int3d({0,-2,  2})])
+        var uR_im2 : double = numerics.upSample(parent[cij+int3d({0,-2,  2})], parent[cij+int3d({0,-2,  1})], parent[cij], parent[cij+int3d({0,-2, -1})], parent[cij+int3d({0,-2, -2})])
+        var uL_im1 : double = numerics.upSample(parent[cij+int3d({0,-1, -2})], parent[cij+int3d({0,-1, -1})], parent[cij], parent[cij+int3d({0,-1,  1})], parent[cij+int3d({0,-1,  2})])
+        var uR_im1 : double = numerics.upSample(parent[cij+int3d({0,-1,  2})], parent[cij+int3d({0,-1,  1})], parent[cij], parent[cij+int3d({0,-1, -1})], parent[cij+int3d({0,-1, -2})])
+        var uL_i00 : double = numerics.upSample(parent[cij+int3d({0, 0, -2})], parent[cij+int3d({0, 0, -1})], parent[cij], parent[cij+int3d({0, 0,  1})], parent[cij+int3d({0, 0,  2})])
+        var uR_i00 : double = numerics.upSample(parent[cij+int3d({0, 0,  2})], parent[cij+int3d({0, 0,  1})], parent[cij], parent[cij+int3d({0, 0, -1})], parent[cij+int3d({0, 0, -2})])
+        var uL_ip1 : double = numerics.upSample(parent[cij+int3d({0, 1, -2})], parent[cij+int3d({0, 1, -1})], parent[cij], parent[cij+int3d({0, 1,  1})], parent[cij+int3d({0, 1,  2})])
+        var uR_ip1 : double = numerics.upSample(parent[cij+int3d({0, 1,  2})], parent[cij+int3d({0, 1,  1})], parent[cij], parent[cij+int3d({0, 1, -1})], parent[cij+int3d({0, 1, -2})])
+        var uL_ip2 : double = numerics.upSample(parent[cij+int3d({0, 2, -2})], parent[cij+int3d({0, 2, -1})], parent[cij], parent[cij+int3d({0, 2,  1})], parent[cij+int3d({0, 2,  2})])
+        var uR_ip2 : double = numerics.upSample(parent[cij+int3d({0, 2,  2})], parent[cij+int3d({0, 2,  1})], parent[cij], parent[cij+int3d({0, 2, -1})], parent[cij+int3d({0, 2, -2})])
         --  ---------
         -- | LR | RR |
         -- |----|----|
         -- | LL | RL |
         --  ---------
-        var uLL : double = numerics.upSample(uL_jm2, uL_jm1, uL_j00, uL_jp1, uL_jp2)
-        var uLR : double = numerics.upSample(uL_jp2, uL_jp1, uL_j00, uL_jm1, uL_jm2)
-        var uRL : double = numerics.upSample(uR_jm2, uR_jm1, uR_j00, uR_jp1, uR_jp2)
-        var uRR : double = numerics.upSample(uR_jp2, uR_jp1, uR_j00, uR_jm1, uR_jm2)
+        var uLL : double = (0.5 * numerics.upSample(uL_jm2, uL_jm1, uL_j00, uL_jp1, uL_jp2) + 0.5 * numerics.upSample(uL_im2, uL_im1, uL_i00, uL_ip1, uL_ip2))
+        var uLR : double = (0.5 * numerics.upSample(uL_jp2, uL_jp1, uL_j00, uL_jm1, uL_jm2) + 0.5 * numerics.upSample(uR_im2, uR_im1, uR_i00, uR_ip1, uR_ip2))
+        var uRL : double = (0.5 * numerics.upSample(uR_jm2, uR_jm1, uR_j00, uR_jp1, uR_jp2) + 0.5 * numerics.upSample(uL_ip2, uL_ip1, uL_i00, uL_im1, uL_im2))
+        var uRR : double = (0.5 * numerics.upSample(uR_jp2, uR_jp1, uR_j00, uR_jm1, uR_jm2) + 0.5 * numerics.upSample(uR_ip2, uR_ip1, uR_i00, uR_im1, uR_im2))
         if     (cij.y <= cij_0.y and cij.z <= cij_0.z) then -- child[0]
             var pid : int = child0.bounds.lo.x
             var i_par : int = cij.y
