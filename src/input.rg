@@ -9,7 +9,7 @@ config.transport = {}
 config.num_base_patches_i =  6; -- number of base-level patches in i-direction
 config.num_base_patches_j =  6; -- number of base-level patches in j-direction
 config.patch_size         = 16; -- number of grid points within each patch in each direction
-config.level_max          =  2; -- maximum allowable refinement level (inclusive) where base level is 0
+config.level_max          =  1; -- maximum allowable refinement level (inclusive) where base level is 0
 config.num_ghosts         =  4; -- number of ghost grid points in each patch in each direction on each side
 
 

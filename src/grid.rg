@@ -396,6 +396,279 @@ end
 
 
 
+-- Create the partition of the send buffers of the i-prev j-prev corner
+-- Usage: var p = [grid.createPartitionOfIPrevJPrevSendBuffers(fsp)](rgn)
+-- fsp : field space
+-- rgn : parent region of data patches with fsp as the field space
+-- p   : partition of the sub-rgn by its left-most dimension as the color index-space
+function grid.createPartitionOfIPrevJPrevSendBuffers (fsp)
+    local
+    task createPartitionOfIPrevJPrevSendBuffers (
+        patches : region(ispace(int3d), fsp) 
+    )
+        var isp = patches.ispace
+        var num_colors = isp.bounds.hi.x + 1 -- assert isp.bounds.lo.x == 0
+        var csp = ispace(int1d, num_colors, 0)
+
+        var coloring = c.legion_domain_point_coloring_create()
+        for color = 0, num_colors do
+            var ghost_bounds_lo = int3d({color, 0, 0})
+            var ghost_bounds_hi = int3d({color, grid.num_ghosts-1, grid.num_ghosts-1})
+            var ghost_bounds    = c.legion_rect_3d_t {lo = ghost_bounds_lo:to_point(), hi = ghost_bounds_hi:to_point()}
+            c.legion_domain_point_coloring_color_domain(coloring, int1d(color):to_domain_point(), c.legion_domain_from_rect_3d(ghost_bounds))
+        end
+        var p = partition(disjoint, patches, coloring, csp)
+        c.legion_domain_point_coloring_destroy(coloring)
+        return p
+    end
+    return createPartitionOfIPrevJPrevSendBuffers
+end
+
+
+
+-- Create the partition of the recv buffers of the i-prev j-prev corner
+-- Usage: var p = [grid.createPartitionOfIPrevJPrevRecvBuffers(fsp)](rgn)
+-- fsp : field space
+-- rgn : parent region of data patches with fsp as the field space
+-- p   : partition of the sub-rgn by its left-most dimension as the color index-space
+function grid.createPartitionOfIPrevJPrevRecvBuffers (fsp)
+    local
+    task createPartitionOfIPrevJPrevRecvBuffers (
+        patches : region(ispace(int3d), fsp) 
+    )
+        var isp = patches.ispace
+        var num_colors = isp.bounds.hi.x + 1 -- assert isp.bounds.lo.x == 0
+        var csp = ispace(int1d, num_colors, 0)
+
+        var coloring = c.legion_domain_point_coloring_create()
+        for color = 0, num_colors do
+            var ghost_bounds_lo = int3d({color, -grid.num_ghosts, -grid.num_ghosts})
+            var ghost_bounds_hi = int3d({color, -1, -1})
+            var ghost_bounds    = c.legion_rect_3d_t {lo = ghost_bounds_lo:to_point(), hi = ghost_bounds_hi:to_point()}
+            c.legion_domain_point_coloring_color_domain(coloring, int1d(color):to_domain_point(), c.legion_domain_from_rect_3d(ghost_bounds))
+        end
+        var p = partition(disjoint, patches, coloring, csp)
+        c.legion_domain_point_coloring_destroy(coloring)
+        return p
+    end
+    return createPartitionOfIPrevJPrevRecvBuffers
+end
+
+
+
+-- Create the partition of the send buffers of the i-next j-prev corner
+-- Usage: var p = [grid.createPartitionOfINextJPrevSendBuffers(fsp)](rgn)
+-- fsp : field space
+-- rgn : parent region of data patches with fsp as the field space
+-- p   : partition of the sub-rgn by its left-most dimension as the color index-space
+function grid.createPartitionOfINextJPrevSendBuffers (fsp)
+    local
+    task createPartitionOfINextJPrevSendBuffers (
+        patches : region(ispace(int3d), fsp) 
+    )
+        var isp = patches.ispace
+        var num_colors = isp.bounds.hi.x + 1 -- assert isp.bounds.lo.x == 0
+        var csp = ispace(int1d, num_colors, 0)
+
+        var coloring = c.legion_domain_point_coloring_create()
+        for color = 0, num_colors do
+            var ghost_bounds_lo = int3d({color, grid.patch_size-grid.num_ghosts, 0})
+            var ghost_bounds_hi = int3d({color, grid.patch_size-1, grid.num_ghosts-1})
+            var ghost_bounds    = c.legion_rect_3d_t {lo = ghost_bounds_lo:to_point(), hi = ghost_bounds_hi:to_point()}
+            c.legion_domain_point_coloring_color_domain(coloring, int1d(color):to_domain_point(), c.legion_domain_from_rect_3d(ghost_bounds))
+        end
+        var p = partition(disjoint, patches, coloring, csp)
+        c.legion_domain_point_coloring_destroy(coloring)
+        return p
+    end
+    return createPartitionOfINextJPrevSendBuffers
+end
+
+
+
+-- Create the partition of the send buffers of the i-next j-prev corner
+-- Usage: var p = [grid.createPartitionOfINextJPrevRecvBuffers(fsp)](rgn)
+-- fsp : field space
+-- rgn : parent region of data patches with fsp as the field space
+-- p   : partition of the sub-rgn by its left-most dimension as the color index-space
+function grid.createPartitionOfINextJPrevRecvBuffers (fsp)
+    local
+    task createPartitionOfINextJPrevRecvBuffers (
+        patches : region(ispace(int3d), fsp) 
+    )
+        var isp = patches.ispace
+        var num_colors = isp.bounds.hi.x + 1 -- assert isp.bounds.lo.x == 0
+        var csp = ispace(int1d, num_colors, 0)
+
+        var coloring = c.legion_domain_point_coloring_create()
+        for color = 0, num_colors do
+            var ghost_bounds_lo = int3d({color, grid.patch_size, -grid.num_ghosts})
+            var ghost_bounds_hi = int3d({color, grid.patch_size+grid.num_ghosts-1, -1})
+            var ghost_bounds    = c.legion_rect_3d_t {lo = ghost_bounds_lo:to_point(), hi = ghost_bounds_hi:to_point()}
+            c.legion_domain_point_coloring_color_domain(coloring, int1d(color):to_domain_point(), c.legion_domain_from_rect_3d(ghost_bounds))
+        end
+        var p = partition(disjoint, patches, coloring, csp)
+        c.legion_domain_point_coloring_destroy(coloring)
+        return p
+    end
+    return createPartitionOfINextJPrevRecvBuffers
+end
+
+
+
+-- Create the partition of the send buffers of the i-next j-prev corner
+-- Usage: var p = [grid.createPartitionOfINextJPrevSendBuffers(fsp)](rgn)
+-- fsp : field space
+-- rgn : parent region of data patches with fsp as the field space
+-- p   : partition of the sub-rgn by its left-most dimension as the color index-space
+function grid.createPartitionOfIPrevJNextSendBuffers (fsp)
+    local
+    task createPartitionOfIPrevJNextSendBuffers (
+        patches : region(ispace(int3d), fsp) 
+    )
+        var isp = patches.ispace
+        var num_colors = isp.bounds.hi.x + 1 -- assert isp.bounds.lo.x == 0
+        var csp = ispace(int1d, num_colors, 0)
+
+        var coloring = c.legion_domain_point_coloring_create()
+        for color = 0, num_colors do
+            var ghost_bounds_lo = int3d({color, 0, grid.patch_size-grid.num_ghosts})
+            var ghost_bounds_hi = int3d({color, grid.num_ghosts-1, grid.patch_size-1})
+            var ghost_bounds    = c.legion_rect_3d_t {lo = ghost_bounds_lo:to_point(), hi = ghost_bounds_hi:to_point()}
+            c.legion_domain_point_coloring_color_domain(coloring, int1d(color):to_domain_point(), c.legion_domain_from_rect_3d(ghost_bounds))
+        end
+        var p = partition(disjoint, patches, coloring, csp)
+        c.legion_domain_point_coloring_destroy(coloring)
+        return p
+    end
+    return createPartitionOfIPrevJNextSendBuffers
+end
+
+
+
+-- Create the partition of the send buffers of the i-next j-prev corner
+-- Usage: var p = [grid.createPartitionOfINextJPrevSendBuffers(fsp)](rgn)
+-- fsp : field space
+-- rgn : parent region of data patches with fsp as the field space
+-- p   : partition of the sub-rgn by its left-most dimension as the color index-space
+function grid.createPartitionOfIPrevJNextRecvBuffers (fsp)
+    local
+    task createPartitionOfIPrevJNextRecvBuffers (
+        patches : region(ispace(int3d), fsp) 
+    )
+        var isp = patches.ispace
+        var num_colors = isp.bounds.hi.x + 1 -- assert isp.bounds.lo.x == 0
+        var csp = ispace(int1d, num_colors, 0)
+
+        var coloring = c.legion_domain_point_coloring_create()
+        for color = 0, num_colors do
+            var ghost_bounds_lo = int3d({color, -grid.num_ghosts, grid.patch_size})
+            var ghost_bounds_hi = int3d({color, -1, grid.patch_size+grid.num_ghosts-1})
+            var ghost_bounds    = c.legion_rect_3d_t {lo = ghost_bounds_lo:to_point(), hi = ghost_bounds_hi:to_point()}
+            c.legion_domain_point_coloring_color_domain(coloring, int1d(color):to_domain_point(), c.legion_domain_from_rect_3d(ghost_bounds))
+        end
+        var p = partition(disjoint, patches, coloring, csp)
+        c.legion_domain_point_coloring_destroy(coloring)
+        return p
+    end
+    return createPartitionOfIPrevJNextRecvBuffers
+end
+
+
+
+-- Create the partition of the send buffers of the i-next j-prev corner
+-- Usage: var p = [grid.createPartitionOfINextJPrevSendBuffers(fsp)](rgn)
+-- fsp : field space
+-- rgn : parent region of data patches with fsp as the field space
+-- p   : partition of the sub-rgn by its left-most dimension as the color index-space
+function grid.createPartitionOfINextJNextSendBuffers (fsp)
+    local
+    task createPartitionOfINextJNextSendBuffers (
+        patches : region(ispace(int3d), fsp) 
+    )
+        var isp = patches.ispace
+        var num_colors = isp.bounds.hi.x + 1 -- assert isp.bounds.lo.x == 0
+        var csp = ispace(int1d, num_colors, 0)
+
+        var coloring = c.legion_domain_point_coloring_create()
+        for color = 0, num_colors do
+            var ghost_bounds_lo = int3d({color, grid.patch_size-grid.num_ghosts, grid.patch_size-grid.num_ghosts})
+            var ghost_bounds_hi = int3d({color, grid.patch_size-1, grid.patch_size-1})
+            var ghost_bounds    = c.legion_rect_3d_t {lo = ghost_bounds_lo:to_point(), hi = ghost_bounds_hi:to_point()}
+            c.legion_domain_point_coloring_color_domain(coloring, int1d(color):to_domain_point(), c.legion_domain_from_rect_3d(ghost_bounds))
+        end
+        var p = partition(disjoint, patches, coloring, csp)
+        c.legion_domain_point_coloring_destroy(coloring)
+        return p
+    end
+    return createPartitionOfINextJNextSendBuffers
+end
+
+
+
+-- Create the partition of the send buffers of the i-next j-prev corner
+-- Usage: var p = [grid.createPartitionOfINextJPrevSendBuffers(fsp)](rgn)
+-- fsp : field space
+-- rgn : parent region of data patches with fsp as the field space
+-- p   : partition of the sub-rgn by its left-most dimension as the color index-space
+function grid.createPartitionOfINextJNextRecvBuffers (fsp)
+    local
+    task createPartitionOfINextJNextRecvBuffers (
+        patches : region(ispace(int3d), fsp) 
+    )
+        var isp = patches.ispace
+        var num_colors = isp.bounds.hi.x + 1 -- assert isp.bounds.lo.x == 0
+        var csp = ispace(int1d, num_colors, 0)
+
+        var coloring = c.legion_domain_point_coloring_create()
+        for color = 0, num_colors do
+            var ghost_bounds_lo = int3d({color, grid.patch_size, grid.patch_size})
+            var ghost_bounds_hi = int3d({color, grid.patch_size+grid.num_ghosts-1, grid.patch_size+grid.num_ghosts-1})
+            var ghost_bounds    = c.legion_rect_3d_t {lo = ghost_bounds_lo:to_point(), hi = ghost_bounds_hi:to_point()}
+            c.legion_domain_point_coloring_color_domain(coloring, int1d(color):to_domain_point(), c.legion_domain_from_rect_3d(ghost_bounds))
+        end
+        var p = partition(disjoint, patches, coloring, csp)
+        c.legion_domain_point_coloring_destroy(coloring)
+        return p
+    end
+    return createPartitionOfINextJNextRecvBuffers
+end
+
+
+
+function grid.groupCommPartitions(FSP)
+    local
+    fspace parts(rgn : region(ispace(int3d),         FSP)) {
+    i_prev_send : partition(disjoint, rgn, ispace(int1d)),
+    i_next_send : partition(disjoint, rgn, ispace(int1d)),
+    j_prev_send : partition(disjoint, rgn, ispace(int1d)),
+    j_next_send : partition(disjoint, rgn, ispace(int1d)),
+    i_prev_recv : partition(disjoint, rgn, ispace(int1d)),
+    i_next_recv : partition(disjoint, rgn, ispace(int1d)),
+    j_prev_recv : partition(disjoint, rgn, ispace(int1d)),
+    j_next_recv : partition(disjoint, rgn, ispace(int1d))
+}
+    return parts
+end
+
+function grid.groupAllPartitions(FSP)
+    local
+    fspace parts(rgn : region(ispace(int3d),         FSP)) {
+    patch_int   : partition(disjoint, rgn, ispace(int1d)),
+    patch_full  : partition(disjoint, rgn, ispace(int1d)),
+    i_prev_send : partition(disjoint, rgn, ispace(int1d)),
+    i_next_send : partition(disjoint, rgn, ispace(int1d)),
+    j_prev_send : partition(disjoint, rgn, ispace(int1d)),
+    j_next_send : partition(disjoint, rgn, ispace(int1d)),
+    i_prev_recv : partition(disjoint, rgn, ispace(int1d)),
+    i_next_recv : partition(disjoint, rgn, ispace(int1d)),
+    j_prev_recv : partition(disjoint, rgn, ispace(int1d)),
+    j_next_recv : partition(disjoint, rgn, ispace(int1d))
+}
+    return parts
+end
+
+
 -- Local helper function: calculate patch ID using the given patch coordinates
 local
 terra baseCoordToPid(i_coord : int, j_coord : int) : int
@@ -476,17 +749,25 @@ end
 function grid.fillGhosts(fsp)
     local
     task taskFillGhosts (
-        meta_patches             : region(ispace(int1d), grid_meta_fsp),
-        meta_patches_part        : partition(disjoint, meta_patches, ispace(int1d)),
-        data_patches             : region(ispace(int3d), fsp),
-        data_patches_i_prev_send : partition(disjoint, data_patches, ispace(int1d)),
-        data_patches_i_next_send : partition(disjoint, data_patches, ispace(int1d)),
-        data_patches_j_prev_send : partition(disjoint, data_patches, ispace(int1d)),
-        data_patches_j_next_send : partition(disjoint, data_patches, ispace(int1d)),
-        data_patches_i_prev_recv : partition(disjoint, data_patches, ispace(int1d)),
-        data_patches_i_next_recv : partition(disjoint, data_patches, ispace(int1d)),
-        data_patches_j_prev_recv : partition(disjoint, data_patches, ispace(int1d)),
-        data_patches_j_next_recv : partition(disjoint, data_patches, ispace(int1d))
+        meta_patches                    : region(ispace(int1d), grid_meta_fsp),
+        meta_patches_part               : partition(disjoint, meta_patches, ispace(int1d)),
+        data_patches                    : region(ispace(int3d), fsp),
+        data_patches_i_prev_send        : partition(disjoint, data_patches, ispace(int1d)),
+        data_patches_i_next_send        : partition(disjoint, data_patches, ispace(int1d)),
+        data_patches_j_prev_send        : partition(disjoint, data_patches, ispace(int1d)),
+        data_patches_j_next_send        : partition(disjoint, data_patches, ispace(int1d)),
+        data_patches_i_prev_recv        : partition(disjoint, data_patches, ispace(int1d)),
+        data_patches_i_next_recv        : partition(disjoint, data_patches, ispace(int1d)),
+        data_patches_j_prev_recv        : partition(disjoint, data_patches, ispace(int1d)),
+        data_patches_j_next_recv        : partition(disjoint, data_patches, ispace(int1d)),
+        data_patches_i_prev_j_prev_send : partition(disjoint, data_patches, ispace(int1d)),
+        data_patches_i_prev_j_next_send : partition(disjoint, data_patches, ispace(int1d)),
+        data_patches_i_next_j_prev_send : partition(disjoint, data_patches, ispace(int1d)),
+        data_patches_i_next_j_next_send : partition(disjoint, data_patches, ispace(int1d)),
+        data_patches_i_prev_j_prev_recv : partition(disjoint, data_patches, ispace(int1d)),
+        data_patches_i_prev_j_next_recv : partition(disjoint, data_patches, ispace(int1d)),
+        data_patches_i_next_j_prev_recv : partition(disjoint, data_patches, ispace(int1d)),
+        data_patches_i_next_j_next_recv : partition(disjoint, data_patches, ispace(int1d))
     )
     where
         reads (meta_patches.{i_prev, i_next, j_prev, j_next}),
