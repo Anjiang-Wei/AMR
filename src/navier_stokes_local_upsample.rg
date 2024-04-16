@@ -373,29 +373,8 @@ task solver.calcRHSLaunch(
      rgn_meta                        : region(ispace(int1d), grid_meta_fsp),
      --
      part_cvars_ddt_int              : partition(disjoint, rgn_cvars_ddt, ispace(int1d)),
-     --
-     part_cvars_now_int              : partition(disjoint, rgn_cvars_now, ispace(int1d)),
-     part_cvars_now_all              : partition(disjoint, rgn_cvars_now, ispace(int1d)),
-     part_cvars_now_i_prev_send      : partition(disjoint, rgn_cvars_now, ispace(int1d)),
-     part_cvars_now_i_next_send      : partition(disjoint, rgn_cvars_now, ispace(int1d)),
-     part_cvars_now_j_prev_send      : partition(disjoint, rgn_cvars_now, ispace(int1d)),
-     part_cvars_now_j_next_send      : partition(disjoint, rgn_cvars_now, ispace(int1d)),
-     part_cvars_now_i_prev_recv      : partition(disjoint, rgn_cvars_now, ispace(int1d)),
-     part_cvars_now_i_next_recv      : partition(disjoint, rgn_cvars_now, ispace(int1d)),
-     part_cvars_now_j_prev_recv      : partition(disjoint, rgn_cvars_now, ispace(int1d)),
-     part_cvars_now_j_next_recv      : partition(disjoint, rgn_cvars_now, ispace(int1d)),
-     --
-     part_grad_vel_coll_int          : partition(disjoint, rgn_grad_vel_coll, ispace(int1d)),
-     part_grad_vel_coll_all          : partition(disjoint, rgn_grad_vel_coll, ispace(int1d)),
-     part_grad_vel_coll_i_prev_send  : partition(disjoint, rgn_grad_vel_coll, ispace(int1d)),
-     part_grad_vel_coll_i_next_send  : partition(disjoint, rgn_grad_vel_coll, ispace(int1d)),
-     part_grad_vel_coll_j_prev_send  : partition(disjoint, rgn_grad_vel_coll, ispace(int1d)),
-     part_grad_vel_coll_j_next_send  : partition(disjoint, rgn_grad_vel_coll, ispace(int1d)),
-     part_grad_vel_coll_i_prev_recv  : partition(disjoint, rgn_grad_vel_coll, ispace(int1d)),
-     part_grad_vel_coll_i_next_recv  : partition(disjoint, rgn_grad_vel_coll, ispace(int1d)),
-     part_grad_vel_coll_j_prev_recv  : partition(disjoint, rgn_grad_vel_coll, ispace(int1d)),
-     part_grad_vel_coll_j_next_recv  : partition(disjoint, rgn_grad_vel_coll, ispace(int1d)),
-     --
+     parts_cvars_now                 : AllPartitionGroupCVARS(rgn_cvars_now),
+     parts_grad_vel_coll             : AllPartitionGroupGradVel(rgn_grad_vel_coll),
      part_grid                       : partition(disjoint, rgn_grid, ispace(int1d)),
      part_meta                       : partition(disjoint, rgn_meta, ispace(int1d))
 )
@@ -404,41 +383,19 @@ where
     reads(rgn_grid, rgn_meta),
     reads writes(rgn_cvars_now, rgn_grad_vel_coll)
 do
-    [grid.fillGhostsLevel(CVARS)](
-        level,
-        rgn_meta, part_meta, rgn_cvars_now,
-        part_cvars_now_i_prev_send,
-        part_cvars_now_i_next_send,
-        part_cvars_now_j_prev_send,
-        part_cvars_now_j_next_send,
-        part_cvars_now_i_prev_recv,
-        part_cvars_now_i_next_recv,
-        part_cvars_now_j_prev_recv,
-        part_cvars_now_j_next_recv
-    );
+    [grid.fillGhostsLevel(CVARS, AllPartitionGroupCVARS)](level, rgn_meta, part_meta, rgn_cvars_now, parts_cvars_now);
     for color in part_meta.colors do
         var pid = int1d(color);
         if (part_meta[color][color].level == level) then
-            solver.calcGradVelColl(part_grad_vel_coll_int[pid], part_cvars_now_all[pid], part_meta[pid]);
+            solver.calcGradVelColl(parts_grad_vel_coll.patch_int[pid], parts_cvars_now.patch_full[pid], part_meta[pid]);
         end
     end
-    [grid.fillGhostsLevel(GRAD_VEL)](
-        level,
-        rgn_meta, part_meta, rgn_grad_vel_coll,
-        part_grad_vel_coll_i_prev_send,
-        part_grad_vel_coll_i_next_send,
-        part_grad_vel_coll_j_prev_send,
-        part_grad_vel_coll_j_next_send,
-        part_grad_vel_coll_i_prev_recv,
-        part_grad_vel_coll_i_next_recv,
-        part_grad_vel_coll_j_prev_recv,
-        part_grad_vel_coll_j_next_recv
-    );
+    [grid.fillGhostsLevel(GRAD_VEL, AllPartitionGroupGradVel)](level, rgn_meta, part_meta, rgn_grad_vel_coll, parts_grad_vel_coll);
     -- fill(rgn_cvars_ddt.{mass, mmtx, mmty, enrg}, 0.0);
     for color in part_meta.colors do
         var pid = int1d(color);
         if (part_meta[color][color].level == level) then
-            solver.calcRHSLeaf(part_cvars_ddt_int[pid], part_cvars_now_all[pid], part_grad_vel_coll_all[pid], part_grid[pid], part_meta[pid]);
+            solver.calcRHSLeaf(part_cvars_ddt_int[pid], parts_cvars_now.patch_full[pid], parts_grad_vel_coll.patch_full[pid], part_grid[pid], part_meta[pid]);
         end
     end
 end
@@ -473,26 +430,8 @@ do
     solver.calcRHSLaunch(
         level,
         rgn_cvars_1, rgn_cvars_0, rgn_grad_vel_coll, rgn_grid, rgn_meta, parts_cvars_1.patch_int, --part_cvars_1_int,
-        parts_cvars_0.patch_int,
-        parts_cvars_0.patch_full,
-        parts_cvars_0.i_prev_send,
-        parts_cvars_0.i_next_send,
-        parts_cvars_0.j_prev_send,
-        parts_cvars_0.j_next_send,
-        parts_cvars_0.i_prev_recv,
-        parts_cvars_0.i_next_recv,
-        parts_cvars_0.j_prev_recv,
-        parts_cvars_0.j_next_recv,
-        parts_grad_vel_coll.patch_int,
-        parts_grad_vel_coll.patch_full,
-        parts_grad_vel_coll.i_prev_send,
-        parts_grad_vel_coll.i_next_send,
-        parts_grad_vel_coll.j_prev_send,
-        parts_grad_vel_coll.j_next_send,
-        parts_grad_vel_coll.i_prev_recv,
-        parts_grad_vel_coll.i_next_recv,
-        parts_grad_vel_coll.j_prev_recv,
-        parts_grad_vel_coll.j_next_recv,
+        parts_cvars_0,
+        parts_grad_vel_coll,
         part_grid, part_meta
     )
     for color in part_meta.colors do
@@ -506,26 +445,8 @@ do
     solver.calcRHSLaunch(
         level,
         rgn_cvars_2, rgn_cvars_1, rgn_grad_vel_coll, rgn_grid, rgn_meta,  parts_cvars_2.patch_int,
-        parts_cvars_1.patch_int,
-        parts_cvars_1.patch_full,
-        parts_cvars_1.i_prev_send,
-        parts_cvars_1.i_next_send,
-        parts_cvars_1.j_prev_send,
-        parts_cvars_1.j_next_send,
-        parts_cvars_1.i_prev_recv,
-        parts_cvars_1.i_next_recv,
-        parts_cvars_1.j_prev_recv,
-        parts_cvars_1.j_next_recv,
-        parts_grad_vel_coll.patch_int,
-        parts_grad_vel_coll.patch_full,
-        parts_grad_vel_coll.i_prev_send,
-        parts_grad_vel_coll.i_next_send,
-        parts_grad_vel_coll.j_prev_send,
-        parts_grad_vel_coll.j_next_send,
-        parts_grad_vel_coll.i_prev_recv,
-        parts_grad_vel_coll.i_next_recv,
-        parts_grad_vel_coll.j_prev_recv,
-        parts_grad_vel_coll.j_next_recv,
+        parts_cvars_1,
+        parts_grad_vel_coll,
         part_grid, part_meta
     )
     for color in part_meta.colors do
@@ -539,26 +460,8 @@ do
     solver.calcRHSLaunch(
         level,
         rgn_cvars_1, rgn_cvars_2, rgn_grad_vel_coll, rgn_grid, rgn_meta,  parts_cvars_1.patch_int,
-        parts_cvars_2.patch_int,
-        parts_cvars_2.patch_full,
-        parts_cvars_2.i_prev_send,
-        parts_cvars_2.i_next_send,
-        parts_cvars_2.j_prev_send,
-        parts_cvars_2.j_next_send,
-        parts_cvars_2.i_prev_recv,
-        parts_cvars_2.i_next_recv,
-        parts_cvars_2.j_prev_recv,
-        parts_cvars_2.j_next_recv,
-        parts_grad_vel_coll.patch_int,
-        parts_grad_vel_coll.patch_full,
-        parts_grad_vel_coll.i_prev_send,
-        parts_grad_vel_coll.i_next_send,
-        parts_grad_vel_coll.j_prev_send,
-        parts_grad_vel_coll.j_next_send,
-        parts_grad_vel_coll.i_prev_recv,
-        parts_grad_vel_coll.i_next_recv,
-        parts_grad_vel_coll.j_prev_recv,
-        parts_grad_vel_coll.j_next_recv,
+        parts_cvars_2,
+        parts_grad_vel_coll,
         part_grid, part_meta
     )
     for color in part_meta.colors do
@@ -729,18 +632,7 @@ do
         end
         grid.refineInit(rgn_patches_meta, patches_meta)
         if (l > 0) then
-            [grid.fillGhostsLevel(CVARS)](
-                l - 1,
-                rgn_patches_meta, patches_meta, rgn_patches_cvars,
-                parts_cvars.i_prev_send,
-                parts_cvars.i_next_send,
-                parts_cvars.j_prev_send,
-                parts_cvars.j_next_send,
-                parts_cvars.i_prev_recv,
-                parts_cvars.i_next_recv,
-                parts_cvars.j_prev_recv,
-                parts_cvars.j_next_recv
-            );
+            [grid.fillGhostsLevel(CVARS, AllPartitionGroupCVARS)](l - 1, rgn_patches_meta, patches_meta, rgn_patches_cvars, parts_cvars);
         end
         for color in patches_meta.colors do
             var parent_meta = patches_meta[int1d(color)][int1d(color)]
@@ -779,18 +671,7 @@ do
                 )
             end
         end
-        [grid.fillGhostsLevel(CVARS)](
-            l,
-            rgn_patches_meta, patches_meta, rgn_patches_cvars,
-            parts_cvars.i_prev_send,
-            parts_cvars.i_next_send,
-            parts_cvars.j_prev_send,
-            parts_cvars.j_next_send,
-            parts_cvars.i_prev_recv,
-            parts_cvars.i_next_recv,
-            parts_cvars.j_prev_recv,
-            parts_cvars.j_next_recv
-        );
+        [grid.fillGhostsLevel(CVARS, AllPartitionGroupCVARS)](l, rgn_patches_meta, patches_meta, rgn_patches_cvars, parts_cvars);
         for color in patches_meta.colors do
             var parent_meta = patches_meta[int1d(color)][int1d(color)]
             if (parent_meta.level == l and parent_meta.child[0] > -1) then
