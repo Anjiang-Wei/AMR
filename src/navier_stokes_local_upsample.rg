@@ -815,10 +815,18 @@ task solver.main()
                          patches_grad_vel_i_next_send,
                          patches_grad_vel_j_prev_send,
                          patches_grad_vel_j_next_send,
+                         patches_grad_vel_i_prev_j_prev_send,
+                         patches_grad_vel_i_prev_j_next_send,
+                         patches_grad_vel_i_next_j_prev_send,
+                         patches_grad_vel_i_next_j_next_send,
                          patches_grad_vel_i_prev_recv,
                          patches_grad_vel_i_next_recv,
                          patches_grad_vel_j_prev_recv,
-                         patches_grad_vel_j_next_recv};
+                         patches_grad_vel_j_next_recv,
+                         patches_grad_vel_i_prev_j_prev_recv,
+                         patches_grad_vel_i_prev_j_next_recv,
+                         patches_grad_vel_i_next_j_prev_recv,
+                         patches_grad_vel_i_next_j_next_recv};
 
     var parts_grad_vel = [AllPartitionGroupGradVel(rgn_patches_grad_vel)]{
                          patches_grad_vel_int,
@@ -827,10 +835,18 @@ task solver.main()
                          patches_grad_vel_i_next_send,
                          patches_grad_vel_j_prev_send,
                          patches_grad_vel_j_next_send,
+                         patches_grad_vel_i_prev_j_prev_send,
+                         patches_grad_vel_i_prev_j_next_send,
+                         patches_grad_vel_i_next_j_prev_send,
+                         patches_grad_vel_i_next_j_next_send,
                          patches_grad_vel_i_prev_recv,
                          patches_grad_vel_i_next_recv,
                          patches_grad_vel_j_prev_recv,
-                         patches_grad_vel_j_next_recv};
+                         patches_grad_vel_j_next_recv,
+                         patches_grad_vel_i_prev_j_prev_recv,
+                         patches_grad_vel_i_prev_j_next_recv,
+                         patches_grad_vel_i_next_j_prev_recv,
+                         patches_grad_vel_i_next_j_next_recv};
 
     var patches_cvars_0                    = [grid.createPartitionOfFullPatches          (CVARS)](rgn_patches_cvars_0); -- complete partition of rgn_patches_cvars_0
     var patches_cvars_0_int                = [grid.createPartitionOfInteriorPatches      (CVARS)](rgn_patches_cvars_0);
@@ -855,10 +871,18 @@ task solver.main()
                         patches_cvars_0_i_next_send,
                         patches_cvars_0_j_prev_send,
                         patches_cvars_0_j_next_send,
+                        patches_cvars_0_i_prev_j_prev_send,
+                        patches_cvars_0_i_prev_j_next_send,
+                        patches_cvars_0_i_next_j_prev_send,
+                        patches_cvars_0_i_next_j_next_send,
                         patches_cvars_0_i_prev_recv,
                         patches_cvars_0_i_next_recv,
                         patches_cvars_0_j_prev_recv,
-                        patches_cvars_0_j_next_recv};
+                        patches_cvars_0_j_next_recv,
+                        patches_cvars_0_i_prev_j_prev_recv,
+                        patches_cvars_0_i_prev_j_next_recv,
+                        patches_cvars_0_i_next_j_prev_recv,
+                        patches_cvars_0_i_next_j_next_recv};
     var parts_cvars_0 = [AllPartitionGroupCVARS(rgn_patches_cvars_0)]{
                         patches_cvars_0_int,
                         patches_cvars_0,
@@ -866,10 +890,18 @@ task solver.main()
                         patches_cvars_0_i_next_send,
                         patches_cvars_0_j_prev_send,
                         patches_cvars_0_j_next_send,
+                        patches_cvars_0_i_prev_j_prev_send,
+                        patches_cvars_0_i_prev_j_next_send,
+                        patches_cvars_0_i_next_j_prev_send,
+                        patches_cvars_0_i_next_j_next_send,
                         patches_cvars_0_i_prev_recv,
                         patches_cvars_0_i_next_recv,
                         patches_cvars_0_j_prev_recv,
-                        patches_cvars_0_j_next_recv};
+                        patches_cvars_0_j_next_recv,
+                        patches_cvars_0_i_prev_j_prev_recv,
+                        patches_cvars_0_i_prev_j_next_recv,
+                        patches_cvars_0_i_next_j_prev_recv,
+                        patches_cvars_0_i_next_j_next_recv};
 
     var patches_cvars_1                    = [grid.createPartitionOfFullPatches          (CVARS)](rgn_patches_cvars_1); -- complete partition of rgn_patches_cvars_1
     var patches_cvars_1_int                = [grid.createPartitionOfInteriorPatches      (CVARS)](rgn_patches_cvars_1);
@@ -894,10 +926,18 @@ task solver.main()
                         patches_cvars_1_i_next_send,
                         patches_cvars_1_j_prev_send,
                         patches_cvars_1_j_next_send,
+                        patches_cvars_1_i_prev_j_prev_send,
+                        patches_cvars_1_i_prev_j_next_send,
+                        patches_cvars_1_i_next_j_prev_send,
+                        patches_cvars_1_i_next_j_next_send,
                         patches_cvars_1_i_prev_recv,
                         patches_cvars_1_i_next_recv,
                         patches_cvars_1_j_prev_recv,
-                        patches_cvars_1_j_next_recv};
+                        patches_cvars_1_j_next_recv,
+                        patches_cvars_1_i_prev_j_prev_recv,
+                        patches_cvars_1_i_prev_j_next_recv,
+                        patches_cvars_1_i_next_j_prev_recv,
+                        patches_cvars_1_i_next_j_next_recv};
     var parts_cvars_1 = [AllPartitionGroupCVARS(rgn_patches_cvars_1)]{
                         patches_cvars_1_int,
                         patches_cvars_1,
@@ -905,10 +945,18 @@ task solver.main()
                         patches_cvars_1_i_next_send,
                         patches_cvars_1_j_prev_send,
                         patches_cvars_1_j_next_send,
+                        patches_cvars_1_i_prev_j_prev_send,
+                        patches_cvars_1_i_prev_j_next_send,
+                        patches_cvars_1_i_next_j_prev_send,
+                        patches_cvars_1_i_next_j_next_send,
                         patches_cvars_1_i_prev_recv,
                         patches_cvars_1_i_next_recv,
                         patches_cvars_1_j_prev_recv,
-                        patches_cvars_1_j_next_recv};
+                        patches_cvars_1_j_next_recv,
+                        patches_cvars_1_i_prev_j_prev_recv,
+                        patches_cvars_1_i_prev_j_next_recv,
+                        patches_cvars_1_i_next_j_prev_recv,
+                        patches_cvars_1_i_next_j_next_recv};
     
 
     var patches_cvars_2                    = [grid.createPartitionOfFullPatches          (CVARS)](rgn_patches_cvars_2); -- complete partition of rgn_patches_cvars_2
@@ -934,10 +982,18 @@ task solver.main()
                         patches_cvars_2_i_next_send,
                         patches_cvars_2_j_prev_send,
                         patches_cvars_2_j_next_send,
+                        patches_cvars_2_i_prev_j_prev_send,
+                        patches_cvars_2_i_prev_j_next_send,
+                        patches_cvars_2_i_next_j_prev_send,
+                        patches_cvars_2_i_next_j_next_send,
                         patches_cvars_2_i_prev_recv,
                         patches_cvars_2_i_next_recv,
                         patches_cvars_2_j_prev_recv,
-                        patches_cvars_2_j_next_recv};
+                        patches_cvars_2_j_next_recv,
+                        patches_cvars_2_i_prev_j_prev_recv,
+                        patches_cvars_2_i_prev_j_next_recv,
+                        patches_cvars_2_i_next_j_prev_recv,
+                        patches_cvars_2_i_next_j_next_recv};
     var parts_cvars_2 = [AllPartitionGroupCVARS(rgn_patches_cvars_2)]{
                         patches_cvars_2_int,
                         patches_cvars_2,
@@ -945,10 +1001,18 @@ task solver.main()
                         patches_cvars_2_i_next_send,
                         patches_cvars_2_j_prev_send,
                         patches_cvars_2_j_next_send,
+                        patches_cvars_2_i_prev_j_prev_send,
+                        patches_cvars_2_i_prev_j_next_send,
+                        patches_cvars_2_i_next_j_prev_send,
+                        patches_cvars_2_i_next_j_next_send,
                         patches_cvars_2_i_prev_recv,
                         patches_cvars_2_i_next_recv,
                         patches_cvars_2_j_prev_recv,
-                        patches_cvars_2_j_next_recv};
+                        patches_cvars_2_j_next_recv,
+                        patches_cvars_2_i_prev_j_prev_recv,
+                        patches_cvars_2_i_prev_j_next_recv,
+                        patches_cvars_2_i_next_j_prev_recv,
+                        patches_cvars_2_i_next_j_next_recv};
 
 
     -- INITIALIZE DATA PATCHES

@@ -28,15 +28,19 @@ fspace grid_fsp {
 
 
 fspace grid_meta_fsp {
-    level   : int,    -- level of grid
-    i_coord : int,    -- patch coordinate in i-dimension
-    j_coord : int,    -- patch coordinate in j-dimension
-    i_prev  : int,    -- patch id of the neighboring patch ahead in i-dimension
-    i_next  : int,    -- patch id of the neighboring patch after in i-dimension
-    j_prev  : int,    -- patch id of the neighboring patch ahead in j-dimension
-    j_next  : int,    -- patch id of the neighboring patch after in j-dimension
-    parent  : int,    -- patch id of the parent patch
-    child   : int[4], -- patch id of all children patches
+    level         : int,    -- level of grid
+    i_coord       : int,    -- patch coordinate in i-dimension
+    j_coord       : int,    -- patch coordinate in j-dimension
+    i_prev        : int,    -- patch id of the neighboring patch ahead in i-dimension
+    i_next        : int,    -- patch id of the neighboring patch after in i-dimension
+    j_prev        : int,    -- patch id of the neighboring patch ahead in j-dimension
+    j_next        : int,    -- patch id of the neighboring patch after in j-dimension
+    i_prev_j_prev : int,
+    i_prev_j_next : int,
+    i_next_j_prev : int,
+    i_next_j_next : int,
+    parent        : int,    -- patch id of the parent patch
+    child         : int[4], -- patch id of all children patches
     --
     -- ^ j
     -- |
@@ -639,14 +643,22 @@ end
 function grid.groupCommPartitions(FSP)
     local
     fspace parts(rgn : region(ispace(int3d),         FSP)) {
-    i_prev_send : partition(disjoint, rgn, ispace(int1d)),
-    i_next_send : partition(disjoint, rgn, ispace(int1d)),
-    j_prev_send : partition(disjoint, rgn, ispace(int1d)),
-    j_next_send : partition(disjoint, rgn, ispace(int1d)),
-    i_prev_recv : partition(disjoint, rgn, ispace(int1d)),
-    i_next_recv : partition(disjoint, rgn, ispace(int1d)),
-    j_prev_recv : partition(disjoint, rgn, ispace(int1d)),
-    j_next_recv : partition(disjoint, rgn, ispace(int1d))
+    i_prev_send        : partition(disjoint, rgn, ispace(int1d)),
+    i_next_send        : partition(disjoint, rgn, ispace(int1d)),
+    j_prev_send        : partition(disjoint, rgn, ispace(int1d)),
+    j_next_send        : partition(disjoint, rgn, ispace(int1d)),
+    i_prev_j_prev_send : partition(disjoint, rgn, ispace(int1d)),
+    i_prev_j_next_send : partition(disjoint, rgn, ispace(int1d)),
+    i_next_j_prev_send : partition(disjoint, rgn, ispace(int1d)),
+    i_next_j_next_send : partition(disjoint, rgn, ispace(int1d)),
+    i_prev_recv        : partition(disjoint, rgn, ispace(int1d)),
+    i_next_recv        : partition(disjoint, rgn, ispace(int1d)),
+    j_prev_recv        : partition(disjoint, rgn, ispace(int1d)),
+    j_next_recv        : partition(disjoint, rgn, ispace(int1d)),
+    i_prev_j_prev_recv : partition(disjoint, rgn, ispace(int1d)),
+    i_prev_j_next_recv : partition(disjoint, rgn, ispace(int1d)),
+    i_next_j_prev_recv : partition(disjoint, rgn, ispace(int1d)),
+    i_next_j_next_recv : partition(disjoint, rgn, ispace(int1d))
 }
     return parts
 end
@@ -654,16 +666,24 @@ end
 function grid.groupAllPartitions(FSP)
     local
     fspace parts(rgn : region(ispace(int3d),         FSP)) {
-    patch_int   : partition(disjoint, rgn, ispace(int1d)),
-    patch_full  : partition(disjoint, rgn, ispace(int1d)),
-    i_prev_send : partition(disjoint, rgn, ispace(int1d)),
-    i_next_send : partition(disjoint, rgn, ispace(int1d)),
-    j_prev_send : partition(disjoint, rgn, ispace(int1d)),
-    j_next_send : partition(disjoint, rgn, ispace(int1d)),
-    i_prev_recv : partition(disjoint, rgn, ispace(int1d)),
-    i_next_recv : partition(disjoint, rgn, ispace(int1d)),
-    j_prev_recv : partition(disjoint, rgn, ispace(int1d)),
-    j_next_recv : partition(disjoint, rgn, ispace(int1d))
+    patch_int          : partition(disjoint, rgn, ispace(int1d)),
+    patch_full         : partition(disjoint, rgn, ispace(int1d)),
+    i_prev_send        : partition(disjoint, rgn, ispace(int1d)),
+    i_next_send        : partition(disjoint, rgn, ispace(int1d)),
+    j_prev_send        : partition(disjoint, rgn, ispace(int1d)),
+    j_next_send        : partition(disjoint, rgn, ispace(int1d)),
+    i_prev_j_prev_send : partition(disjoint, rgn, ispace(int1d)),
+    i_prev_j_next_send : partition(disjoint, rgn, ispace(int1d)),
+    i_next_j_prev_send : partition(disjoint, rgn, ispace(int1d)),
+    i_next_j_next_send : partition(disjoint, rgn, ispace(int1d)),
+    i_prev_recv        : partition(disjoint, rgn, ispace(int1d)),
+    i_next_recv        : partition(disjoint, rgn, ispace(int1d)),
+    j_prev_recv        : partition(disjoint, rgn, ispace(int1d)),
+    j_next_recv        : partition(disjoint, rgn, ispace(int1d)),
+    i_prev_j_prev_recv : partition(disjoint, rgn, ispace(int1d)),
+    i_prev_j_next_recv : partition(disjoint, rgn, ispace(int1d)),
+    i_next_j_prev_recv : partition(disjoint, rgn, ispace(int1d)),
+    i_next_j_next_recv : partition(disjoint, rgn, ispace(int1d))
 }
     return parts
 end
@@ -693,21 +713,37 @@ do
         if (int(pid) < num_base_patches) then
             var my_i_coord : int = int(pid) / grid.num_base_patches_j
             var my_j_coord : int = int(pid) % grid.num_base_patches_j
-            meta_patches[pid][pid].level   = 0
-            meta_patches[pid][pid].i_coord = my_i_coord
-            meta_patches[pid][pid].j_coord = my_j_coord
-            meta_patches[pid][pid].i_prev  = baseCoordToPid(int(my_i_coord - 1 + grid.num_base_patches_i) % grid.num_base_patches_i, my_j_coord)
-            meta_patches[pid][pid].i_next  = baseCoordToPid(int(my_i_coord + 1                          ) % grid.num_base_patches_i, my_j_coord)
-            meta_patches[pid][pid].j_prev  = baseCoordToPid(my_i_coord, int(my_j_coord - 1 + grid.num_base_patches_j) % grid.num_base_patches_j)
-            meta_patches[pid][pid].j_next  = baseCoordToPid(my_i_coord, int(my_j_coord + 1                          ) % grid.num_base_patches_j)
+            var nbr_i_coord_prev : int = int(my_i_coord - 1 + grid.num_base_patches_i) % grid.num_base_patches_i
+            var nbr_i_coord_next : int = int(my_i_coord + 1                          ) % grid.num_base_patches_i
+            var nbr_j_coord_prev : int = int(my_j_coord - 1 + grid.num_base_patches_i) % grid.num_base_patches_j
+            var nbr_j_coord_next : int = int(my_j_coord + 1                          ) % grid.num_base_patches_j
+            meta_patches[pid][pid].level          = 0
+            meta_patches[pid][pid].i_coord        = my_i_coord
+            meta_patches[pid][pid].j_coord        = my_j_coord
+            meta_patches[pid][pid].i_prev         = baseCoordToPid(nbr_i_coord_prev,  my_j_coord)
+            meta_patches[pid][pid].i_next         = baseCoordToPid(nbr_i_coord_next,  my_j_coord)
+            meta_patches[pid][pid].j_prev         = baseCoordToPid( my_i_coord,      nbr_j_coord_prev)
+            meta_patches[pid][pid].j_next         = baseCoordToPid( my_i_coord,      nbr_j_coord_next)
+            meta_patches[pid][pid].i_prev_j_prev  = baseCoordToPid(nbr_i_coord_prev, nbr_j_coord_prev)
+            meta_patches[pid][pid].i_prev_j_next  = baseCoordToPid(nbr_i_coord_prev, nbr_j_coord_next)
+            meta_patches[pid][pid].i_next_j_prev  = baseCoordToPid(nbr_i_coord_next, nbr_j_coord_prev)
+            meta_patches[pid][pid].i_next_j_next  = baseCoordToPid(nbr_i_coord_next, nbr_j_coord_next)
+            --meta_patches[pid][pid].i_prev  = baseCoordToPid(int(my_i_coord - 1 + grid.num_base_patches_i) % grid.num_base_patches_i, my_j_coord)
+            --meta_patches[pid][pid].i_next  = baseCoordToPid(int(my_i_coord + 1                          ) % grid.num_base_patches_i, my_j_coord)
+            --meta_patches[pid][pid].j_prev  = baseCoordToPid(my_i_coord, int(my_j_coord - 1 + grid.num_base_patches_j) % grid.num_base_patches_j)
+            --meta_patches[pid][pid].j_next  = baseCoordToPid(my_i_coord, int(my_j_coord + 1                          ) % grid.num_base_patches_j)
         else
-            meta_patches[pid][pid].level   = -1
-            meta_patches[pid][pid].i_coord = -1
-            meta_patches[pid][pid].j_coord = -1
-            meta_patches[pid][pid].i_prev  = -1
-            meta_patches[pid][pid].i_next  = -1
-            meta_patches[pid][pid].j_prev  = -1
-            meta_patches[pid][pid].j_next  = -1
+            meta_patches[pid][pid].level          = -1
+            meta_patches[pid][pid].i_coord        = -1
+            meta_patches[pid][pid].j_coord        = -1
+            meta_patches[pid][pid].i_prev         = -1
+            meta_patches[pid][pid].i_next         = -1
+            meta_patches[pid][pid].j_prev         = -1
+            meta_patches[pid][pid].j_next         = -1
+            meta_patches[pid][pid].i_prev_j_prev  = -1
+            meta_patches[pid][pid].i_prev_j_next  = -1
+            meta_patches[pid][pid].i_next_j_prev  = -1
+            meta_patches[pid][pid].i_next_j_next  = -1
         end
         meta_patches[pid][pid].parent      = -1
         meta_patches[pid][pid].child[0]    = -1
@@ -815,28 +851,24 @@ function grid.fillGhostsLevel(fsp, part_fsp)
         meta_patches             : region(ispace(int1d), grid_meta_fsp),
         meta_patches_part        : partition(disjoint, meta_patches, ispace(int1d)),
         data_patches             : region(ispace(int3d), fsp),
-        parts_patches            : part_fsp(data_patches)-- TODO
-        --data_patches_i_prev_send : partition(disjoint, data_patches, ispace(int1d)),
-        --data_patches_i_next_send : partition(disjoint, data_patches, ispace(int1d)),
-        --data_patches_j_prev_send : partition(disjoint, data_patches, ispace(int1d)),
-        --data_patches_j_next_send : partition(disjoint, data_patches, ispace(int1d)),
-        --data_patches_i_prev_recv : partition(disjoint, data_patches, ispace(int1d)),
-        --data_patches_i_next_recv : partition(disjoint, data_patches, ispace(int1d)),
-        --data_patches_j_prev_recv : partition(disjoint, data_patches, ispace(int1d)),
-        --data_patches_j_next_recv : partition(disjoint, data_patches, ispace(int1d))
+        parts_patches            : part_fsp(data_patches)
     )
     where
-        reads (meta_patches.{level, i_prev, i_next, j_prev, j_next}),
+        reads (meta_patches.{level, i_prev, i_next, j_prev, j_next, i_prev_j_prev, i_prev_j_next, i_next_j_prev, i_next_j_next}),
         reads writes (data_patches)
     do
         var csp = ispace(int1d, grid.num_patches_max, 0)
         --__demand(__index_launch)
         for pid in csp do
             if (level == meta_patches_part[pid][pid].level) then
-                var i_prev : int = int(meta_patches_part[pid][pid].i_prev)
-                var i_next : int = int(meta_patches_part[pid][pid].i_next)
-                var j_prev : int = int(meta_patches_part[pid][pid].j_prev)
-                var j_next : int = int(meta_patches_part[pid][pid].j_next)
+                var i_prev        : int = int(meta_patches_part[pid][pid].i_prev)
+                var i_next        : int = int(meta_patches_part[pid][pid].i_next)
+                var j_prev        : int = int(meta_patches_part[pid][pid].j_prev)
+                var j_next        : int = int(meta_patches_part[pid][pid].j_next)
+                var i_prev_j_prev : int = int(meta_patches_part[pid][pid].i_prev_j_prev)
+                var i_prev_j_next : int = int(meta_patches_part[pid][pid].i_prev_j_next)
+                var i_next_j_prev : int = int(meta_patches_part[pid][pid].i_next_j_prev)
+                var i_next_j_next : int = int(meta_patches_part[pid][pid].i_next_j_next)
 
                 if (i_prev > -1) then
                     [grid.deepCopy(fsp)](parts_patches.i_next_recv[int1d(i_prev)], parts_patches.i_prev_send[pid]);
@@ -857,6 +889,27 @@ function grid.fillGhostsLevel(fsp, part_fsp)
                     [grid.deepCopy(fsp)](parts_patches.j_prev_recv[int1d(j_next)], parts_patches.j_next_send[pid]);
                     [grid.deepCopy(fsp)](parts_patches.j_next_recv[pid], parts_patches.j_prev_send[int1d(j_next)]);
                 end
+                
+                if (i_prev_j_prev > -1) then
+                    [grid.deepCopy(fsp)](parts_patches.i_next_j_next_recv[int1d(i_prev_j_prev)], parts_patches.i_prev_j_prev_send[pid]);
+                    [grid.deepCopy(fsp)](parts_patches.i_prev_j_prev_recv[pid], parts_patches.i_next_j_next_send[int1d(i_prev_j_prev)]);
+                end
+
+                if (i_prev_j_next > -1) then
+                    [grid.deepCopy(fsp)](parts_patches.i_next_j_prev_recv[int1d(i_prev_j_next)], parts_patches.i_prev_j_next_send[pid]);
+                    [grid.deepCopy(fsp)](parts_patches.i_prev_j_next_recv[pid], parts_patches.i_next_j_prev_send[int1d(i_prev_j_next)]);
+                end
+
+                if (i_next_j_prev > -1) then
+                    [grid.deepCopy(fsp)](parts_patches.i_prev_j_next_recv[int1d(i_next_j_prev)], parts_patches.i_next_j_prev_send[pid]);
+                    [grid.deepCopy(fsp)](parts_patches.i_next_j_prev_recv[pid], parts_patches.i_prev_j_next_send[int1d(i_next_j_prev)]);
+                end
+
+                if (i_next_j_next > -1) then
+                    [grid.deepCopy(fsp)](parts_patches.i_prev_j_prev_recv[int1d(i_next_j_next)], parts_patches.i_next_j_next_send[pid]);
+                    [grid.deepCopy(fsp)](parts_patches.i_next_j_next_recv[pid], parts_patches.i_prev_j_prev_send[int1d(i_next_j_next)]);
+                end
+
             end
         end
     end
