@@ -30,8 +30,10 @@ do
     for cij in grid_patch.ispace do
         var r : double = cmath.sqrt(grid_patch[cij].x * grid_patch[cij].x + grid_patch[cij].y * grid_patch[cij].y);
         var G : double = cmath.exp(alp * (1.0 - r * r));
-        var u   : double = U0 + r * eps * G * double( grid_patch[cij].y) / (r + double(r*r < 1e-30));
-        var v   : double =      r * eps * G * double(-grid_patch[cij].x) / (r + double(r*r < 1e-30));
+        --var u   : double = U0 + r * eps * G * double( grid_patch[cij].y) / (r + double(r*r < 1e-30));
+        --var v   : double =      r * eps * G * double(-grid_patch[cij].x) / (r + double(r*r < 1e-30));
+        var u   : double = U0/cmath.sqrt(2.0) + r * eps * G * double( grid_patch[cij].y) / (r + double(r*r < 1e-30));
+        var v   : double = U0/cmath.sqrt(2.0) + r * eps * G * double(-grid_patch[cij].x) / (r + double(r*r < 1e-30));
         var T   : double = T0 - AT * G * G;
         var rho : double = cmath.pow(1.0 - AT * G * G / T0, isen);
 
