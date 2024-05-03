@@ -845,7 +845,7 @@ end
 
 
 function grid.fillGhostsLevel(fsp, part_fsp)
-    local
+    local __demand(__inline)
     task taskFillGhosts (
         level                    : int,
         meta_patches             : region(ispace(int1d), grid_meta_fsp),
@@ -1137,6 +1137,44 @@ do
                         meta_patches[pid_child_j][pid_child_j].j_next = -1
                     end
                 end
+
+                if     (child_loc == 0) then
+                    if (parent_patch.i_prev_j_prev > -1) then
+                        var parent_nbr = meta_patches[parent_patch.i_prev_j_prev][parent_patch.i_prev_j_prev]
+                        var i_prev_j_prev : int = parent_nbr.child[3];
+                        meta_patches[pid_child_j][pid_child_j].i_prev_j_prev = i_prev_j_prev;
+                        if (i_prev_j_prev > -1) then meta_patches[int1d(i_prev_j_prev)][int1d(i_prev_j_prev)].i_next_j_next = int(pid_child_j) end 
+                    else
+                        meta_patches[pid_child_j][pid_child_j].i_prev_j_prev = -1;
+                    end
+                elseif (child_loc == 1) then
+                    if (parent_patch.i_next_j_prev > -1) then
+                        var parent_nbr = meta_patches[parent_patch.i_next_j_prev][parent_patch.i_next_j_prev]
+                        var i_next_j_prev : int = parent_nbr.child[2];
+                        meta_patches[pid_child_j][pid_child_j].i_next_j_prev = i_next_j_prev;
+                        if (i_next_j_prev > -1) then meta_patches[int1d(i_next_j_prev)][int1d(i_next_j_prev)].i_prev_j_next = int(pid_child_j) end 
+                    else
+                        meta_patches[pid_child_j][pid_child_j].i_next_j_prev = -1;
+                    end
+                elseif (child_loc == 2) then
+                    if (parent_patch.i_prev_j_next > -1) then
+                        var parent_nbr = meta_patches[parent_patch.i_prev_j_next][parent_patch.i_prev_j_next]
+                        var i_prev_j_next : int = parent_nbr.child[1];
+                        meta_patches[pid_child_j][pid_child_j].i_prev_j_next = i_prev_j_next;
+                        if (i_prev_j_next > -1) then meta_patches[int1d(i_prev_j_next)][int1d(i_prev_j_next)].i_next_j_prev = int(pid_child_j) end 
+                    else
+                        meta_patches[pid_child_j][pid_child_j].i_prev_j_next = -1;
+                    end
+                elseif (child_loc == 3) then
+                    if (parent_patch.i_next_j_next > -1) then
+                        var parent_nbr = meta_patches[parent_patch.i_next_j_next][parent_patch.i_next_j_next]
+                        var i_next_j_next : int = parent_nbr.child[0];
+                        meta_patches[pid_child_j][pid_child_j].i_next_j_next = i_next_j_next;
+                        if (i_next_j_next > -1) then meta_patches[int1d(i_next_j_next)][int1d(i_next_j_next)].i_prev_j_prev = int(pid_child_j) end 
+                    else
+                        meta_patches[pid_child_j][pid_child_j].i_next_j_next = -1;
+                    end
+                end
             end -- for child_loc
         end
     end -- for pid
@@ -1189,30 +1227,44 @@ local __demand(__inline) task _resetLeafMetaPatch(
 where
     reads writes (meta_patches_region)
 do
-    var i_prev     : int1d = int1d(meta_patches[int1d(pid)][int1d(pid)].i_prev)
-    var i_next     : int1d = int1d(meta_patches[int1d(pid)][int1d(pid)].i_next)
-    var j_prev     : int1d = int1d(meta_patches[int1d(pid)][int1d(pid)].j_prev)
-    var j_next     : int1d = int1d(meta_patches[int1d(pid)][int1d(pid)].j_next)
+    var i_prev        : int1d = int1d(meta_patches[int1d(pid)][int1d(pid)].i_prev       )
+    var i_next        : int1d = int1d(meta_patches[int1d(pid)][int1d(pid)].i_next       )
+    var j_prev        : int1d = int1d(meta_patches[int1d(pid)][int1d(pid)].j_prev       )
+    var j_next        : int1d = int1d(meta_patches[int1d(pid)][int1d(pid)].j_next       )
+    var i_prev_j_prev : int1d = int1d(meta_patches[int1d(pid)][int1d(pid)].i_prev_j_prev)
+    var i_prev_j_next : int1d = int1d(meta_patches[int1d(pid)][int1d(pid)].i_prev_j_next)
+    var i_next_j_prev : int1d = int1d(meta_patches[int1d(pid)][int1d(pid)].i_next_j_prev)
+    var i_next_j_next : int1d = int1d(meta_patches[int1d(pid)][int1d(pid)].i_next_j_next)
+    
     var pid_parent : int1d = int1d(meta_patches[int1d(pid)][int1d(pid)].parent)
     var i_coord    : int   = meta_patches[pid][pid].i_coord
     var j_coord    : int   = meta_patches[pid][pid].j_coord
     var child_loc  : int   = (i_coord % 2) + (j_coord % 2) * 2
 
-    meta_patches[i_prev][i_prev].i_next = -1;
-    meta_patches[i_next][i_next].i_prev = -1;
-    meta_patches[j_prev][j_prev].j_next = -1;
-    meta_patches[j_next][j_next].j_prev = -1;
-    meta_patches[pid][pid].level        = -1;
-    meta_patches[pid][pid].i_coord      = -1;
-    meta_patches[pid][pid].j_coord      = -1;
-    meta_patches[pid][pid].parent       = -1;
-    meta_patches[pid][pid].refine_req   = false;
-    meta_patches[pid][pid].coarsen_req  = false;
-    meta_patches[pid][pid].i_prev       = -1;
-    meta_patches[pid][pid].j_prev       = -1;
-    meta_patches[pid][pid].i_next       = -1;
-    meta_patches[pid][pid].j_next       = -1;
-    meta_patches[pid_parent][pid_parent].child[child_loc] = -1
+    if (int(i_prev)        > -1) then meta_patches[i_prev][i_prev].i_next = -1 end
+    if (int(j_prev)        > -1) then meta_patches[j_prev][j_prev].j_next = -1 end
+    if (int(i_next)        > -1) then meta_patches[i_next][i_next].i_prev = -1 end
+    if (int(j_next)        > -1) then meta_patches[j_next][j_next].j_prev = -1 end
+    if (int(i_prev_j_prev) > -1) then meta_patches[i_prev_j_prev][i_prev_j_prev].i_next_j_next = -1 end
+    if (int(i_prev_j_next) > -1) then meta_patches[i_prev_j_next][i_prev_j_next].i_next_j_prev = -1 end
+    if (int(i_next_j_prev) > -1) then meta_patches[i_next_j_prev][i_next_j_prev].i_prev_j_next = -1 end
+    if (int(i_next_j_next) > -1) then meta_patches[i_next_j_next][i_next_j_next].i_prev_j_prev = -1 end
+    
+    meta_patches[pid][pid].level                          = -1;
+    meta_patches[pid][pid].i_coord                        = -1;
+    meta_patches[pid][pid].j_coord                        = -1;
+    meta_patches[pid][pid].parent                         = -1;
+    meta_patches[pid][pid].refine_req                     = false;
+    meta_patches[pid][pid].coarsen_req                    = false;
+    meta_patches[pid][pid].i_prev                         = -1;
+    meta_patches[pid][pid].j_prev                         = -1;
+    meta_patches[pid][pid].i_next                         = -1;
+    meta_patches[pid][pid].j_next                         = -1;
+    meta_patches[pid][pid].i_prev_j_prev                  = -1;
+    meta_patches[pid][pid].i_prev_j_next                  = -1;
+    meta_patches[pid][pid].i_next_j_prev                  = -1;
+    meta_patches[pid][pid].i_next_j_next                  = -1;
+    meta_patches[pid_parent][pid_parent].child[child_loc] = -1;
 end
 
 

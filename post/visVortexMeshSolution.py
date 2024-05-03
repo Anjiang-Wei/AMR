@@ -29,7 +29,7 @@ def main():
 
 def generateVis(input_file_msh, input_file_dat, fig_file):
     plt.figure(figsize=(15, 12))
-    generateVisData(input_file_dat)
+    generateVisData(input_file_dat, vmin=0.78, vmax=1.02)
     generateVisMesh(input_file_msh)
     plt.gca().set_aspect(1.0)
     plt.xlabel("$x$")
@@ -77,7 +77,7 @@ def generateVisData(data_file, cmap='gnuplot2_r', vmin=None, vmax=None, rasteriz
 
     level_max = int(np.max(levels) + 1.1)
     # Which levels to visualize
-    level_list = np.arange(1, 2)
+    level_list = np.arange(0, 3)
     for l in level_list:
         pid_level = np.where(np.int32(levels) == l)[0]
         for pid in pid_level:

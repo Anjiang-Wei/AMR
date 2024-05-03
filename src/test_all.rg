@@ -92,7 +92,7 @@ task main()
 
     -- TEST COARSENING
     for pid in part_patches_meta.colors do
-        part_patches_meta[pid][pid].coarsen_req = (stdlib.rand() % 4) > 0
+        part_patches_meta[pid][pid].coarsen_req = (stdlib.rand() % 6) > 0
     end
     [writeActiveMeta("output_meta_coarsen_stage_0.dat")](patches_meta, part_patches_meta);
     grid.coarsenInit(patches_meta, part_patches_meta);

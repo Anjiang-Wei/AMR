@@ -1,9 +1,11 @@
 import numpy as np
+import matplotlib
+matplotlib.use('agg')
 from matplotlib.patches import Rectangle
 import matplotlib.pyplot as plt
 
-input_file_fmt = "./data/output_meta_{:s}_stage_{:d}.dat"
-fig_file_fmt   = "./data/output_meta_{:s}_stage_{:d}.pdf"
+input_file_fmt = "../src/output_meta_{:s}_stage_{:d}.dat"
+fig_file_fmt   = "../src/output_meta_{:s}_stage_{:d}.pdf"
 
 def main():
     generateVis(input_file_fmt.format("refine", 0), fig_file_fmt.format("refine", 0))

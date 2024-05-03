@@ -590,7 +590,7 @@ do
     var T0  = 1.0 / (eos.Rg * eos.gamma)
     var U0  = 0.5 * cmath.sqrt(eos.gamma * eos.Rg * T0)
 
-    var threshold : double = 0.99;
+    var threshold : double = 0.99 - 0.10 * (rgn_patch_meta[int1d(pid)].level - 1);
     -- if (rgn_patch_meta[int1d(pid)].level == 0) then
     --     threshold = 0.99
     -- else
@@ -602,8 +602,8 @@ do
     for ij in isp do
         count += int(rgn_patch_cvars[ij].mass > threshold)
     end
-    if (count > 254) then
-        --rgn_patch_meta[int1d(pid)].coarsen_req = true;
+    if (count > 245) then
+        rgn_patch_meta[int1d(pid)].coarsen_req = true;
         if (rgn_patch_meta[int1d(pid)].child[0] > -1) then
             rgn_patch_meta[int1d(rgn_patch_meta[int1d(pid)].child[0])].coarsen_req = true
             rgn_patch_meta[int1d(rgn_patch_meta[int1d(pid)].child[1])].coarsen_req = true
@@ -613,6 +613,7 @@ do
     end
 end
 
+__demand(__inline)
 task solver.adjustMesh(
     rgn_patches_meta  : region(ispace(int1d), grid_meta_fsp),
     rgn_patches_grid  : region(ispace(int3d),      grid_fsp),
@@ -712,15 +713,15 @@ do
         grid.refineEnd(rgn_patches_meta);
     end
 
-    -- for l = grid.level_max, 0, -1 do
-    --     for color in patches_meta.colors do
-    --         if (patches_meta[int1d(color)][int1d(color)].level == l) then
-    --             solver.setCoarsenFlagsLeaf(patches_meta[int1d(color)], patches_cvars_int[int1d(color)])
-    --         end
-    --     end
-    --     grid.coarsenInit(rgn_patches_meta, patches_meta)
-    --     grid.coarsenEnd(rgn_patches_meta, patches_meta)
-    -- end
+    for l = grid.level_max, 0, -1 do
+        for color in patches_meta.colors do
+            if (patches_meta[int1d(color)][int1d(color)].level == l) then
+                solver.setCoarsenFlagsLeaf(patches_meta[int1d(color)], parts_cvars.patch_int[int1d(color)])
+            end
+        end
+        grid.coarsenInit(rgn_patches_meta, patches_meta)
+        grid.coarsenEnd(rgn_patches_meta, patches_meta)
+    end
 end
 
 
@@ -1019,8 +1020,8 @@ task solver.main()
     fill(rgn_patches_grid.{x, y}, 0.0);
 
     -- INITIALIZE META PATCHES to avoid warnings (write_discard not supported)
-    fill(rgn_patches_meta.{level, i_coord, j_coord, i_prev, i_next, j_prev, j_next, parent}, 0);
-    fill(rgn_patches_meta.child, [terralib.constant(`arrayof(int, 0, 0, 0, 0))]);
+    fill(rgn_patches_meta.{level, i_coord, j_coord, i_prev, i_next, j_prev, j_next, i_prev_j_prev, i_prev_j_next, i_next_j_prev, i_next_j_next, parent}, -1);
+    fill(rgn_patches_meta.child, [terralib.constant(`arrayof(int, -1, -1, -1, -1))]);
     fill(rgn_patches_meta.{refine_req, coarsen_req}, false);
     grid.metaGridInit(rgn_patches_meta, patches_meta);
 
