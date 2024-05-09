@@ -83,6 +83,7 @@ end
 
 
 -- Color the given region of meta-patches and return the partition by colors
+__demand(__leaf, __inline)
 task grid.createPartitionOfMetaPatches (
     meta_patches : region(ispace(int1d), grid_meta_fsp)
 )
@@ -106,7 +107,7 @@ end
 -- rgn : parent region of data patches with fsp as the field space
 -- p   : partition of rgn by its left-most dimension as the color index-space
 function grid.createPartitionOfFullPatches(fsp)
-    local
+    local __demand(__leaf, __inline)
     task createPartitionOfFullPatchesTask (
         patches : region(ispace(int3d), fsp) 
     )
@@ -136,7 +137,7 @@ end
 -- rgn : parent region of data patches with fsp as the field space
 -- p   : partition of interior sub-rgn by its left-most dimension as the color index-space
 function grid.createPartitionOfInteriorPatches(fsp)
-    local
+    local __demand(__leaf, __inline)
     task createPartitionOfInteriorPatchesTask (
         patches : region(ispace(int3d), fsp) 
     )
@@ -166,7 +167,7 @@ end
 -- rgn : parent region of data patches with fsp as the field space
 -- p   : partition of the sub-rgn by its left-most dimension as the color index-space
 function grid.createPartitionOfIPrevSendBuffers(fsp)
-    local
+    local __demand(__leaf, __inline)
     task createPartitionOfIPrevSendBuffersTask (
         patches : region(ispace(int3d), fsp) 
     )
@@ -196,7 +197,7 @@ end
 -- rgn : parent region of data patches with fsp as the field space
 -- p   : partition of the sub-rgn by its left-most dimension as the color index-space
 function grid.createPartitionOfINextSendBuffers (fsp)
-    local
+    local __demand(__leaf, __inline)
     task createPartitionOfINextSendBuffersTask (
         patches : region(ispace(int3d), fsp) 
     )
@@ -226,7 +227,7 @@ end
 -- rgn : parent region of data patches with fsp as the field space
 -- p   : partition of the sub-rgn by its left-most dimension as the color index-space
 function grid.createPartitionOfIPrevRecvBuffers (fsp)
-    local
+    local __demand(__leaf, __inline)
     task createPartitionOfIPrevRecvBuffersTask (
         patches : region(ispace(int3d), fsp) 
     )
@@ -256,7 +257,7 @@ end
 -- rgn : parent region of data patches with fsp as the field space
 -- p   : partition of the sub-rgn by its left-most dimension as the color index-space
 function grid.createPartitionOfINextRecvBuffers (fsp)
-    local
+    local __demand(__leaf, __inline)
     task createPartitionOfINextRecvBuffersTask (
         patches : region(ispace(int3d), fsp) 
     )
@@ -286,7 +287,7 @@ end
 -- rgn : parent region of data patches with fsp as the field space
 -- p   : partition of the sub-rgn by its left-most dimension as the color index-space
 function grid.createPartitionOfJPrevSendBuffers (fsp)
-local
+local __demand(__leaf, __inline)
 task createPartitionOfJPrevSendBuffersTask (
     patches : region(ispace(int3d), fsp) 
 )
@@ -316,7 +317,7 @@ end
 -- rgn : parent region of data patches with fsp as the field space
 -- p   : partition of the sub-rgn by its left-most dimension as the color index-space
 function grid.createPartitionOfJNextSendBuffers (fsp)
-    local
+    local __demand(__leaf, __inline)
     task createPartitionOfJNextSendBuffers (
         patches : region(ispace(int3d), fsp) 
     )
@@ -346,7 +347,7 @@ end
 -- rgn : parent region of data patches with fsp as the field space
 -- p   : partition of the sub-rgn by its left-most dimension as the color index-space
 function grid.createPartitionOfJPrevRecvBuffers (fsp)
-    local
+    local __demand(__leaf, __inline)
     task createPartitionOfJPrevRecvBuffers (
         patches : region(ispace(int3d), fsp) 
     )
@@ -376,7 +377,7 @@ end
 -- rgn : parent region of data patches with fsp as the field space
 -- p   : partition of the sub-rgn by its left-most dimension as the color index-space
 function grid.createPartitionOfJNextRecvBuffers (fsp)
-    local
+    local __demand(__leaf, __inline)
     task createPartitionOfJNextRecvBuffers (
         patches : region(ispace(int3d), fsp) 
     )
@@ -406,7 +407,7 @@ end
 -- rgn : parent region of data patches with fsp as the field space
 -- p   : partition of the sub-rgn by its left-most dimension as the color index-space
 function grid.createPartitionOfIPrevJPrevSendBuffers (fsp)
-    local
+    local __demand(__leaf, __inline)
     task createPartitionOfIPrevJPrevSendBuffers (
         patches : region(ispace(int3d), fsp) 
     )
@@ -436,7 +437,7 @@ end
 -- rgn : parent region of data patches with fsp as the field space
 -- p   : partition of the sub-rgn by its left-most dimension as the color index-space
 function grid.createPartitionOfIPrevJPrevRecvBuffers (fsp)
-    local
+    local __demand(__leaf, __inline)
     task createPartitionOfIPrevJPrevRecvBuffers (
         patches : region(ispace(int3d), fsp) 
     )
@@ -466,7 +467,7 @@ end
 -- rgn : parent region of data patches with fsp as the field space
 -- p   : partition of the sub-rgn by its left-most dimension as the color index-space
 function grid.createPartitionOfINextJPrevSendBuffers (fsp)
-    local
+    local __demand(__leaf, __inline)
     task createPartitionOfINextJPrevSendBuffers (
         patches : region(ispace(int3d), fsp) 
     )
@@ -496,7 +497,7 @@ end
 -- rgn : parent region of data patches with fsp as the field space
 -- p   : partition of the sub-rgn by its left-most dimension as the color index-space
 function grid.createPartitionOfINextJPrevRecvBuffers (fsp)
-    local
+    local __demand(__leaf, __inline)
     task createPartitionOfINextJPrevRecvBuffers (
         patches : region(ispace(int3d), fsp) 
     )
@@ -526,7 +527,7 @@ end
 -- rgn : parent region of data patches with fsp as the field space
 -- p   : partition of the sub-rgn by its left-most dimension as the color index-space
 function grid.createPartitionOfIPrevJNextSendBuffers (fsp)
-    local
+    local __demand(__leaf, __inline)
     task createPartitionOfIPrevJNextSendBuffers (
         patches : region(ispace(int3d), fsp) 
     )
@@ -556,7 +557,7 @@ end
 -- rgn : parent region of data patches with fsp as the field space
 -- p   : partition of the sub-rgn by its left-most dimension as the color index-space
 function grid.createPartitionOfIPrevJNextRecvBuffers (fsp)
-    local
+    local __demand(__leaf, __inline)
     task createPartitionOfIPrevJNextRecvBuffers (
         patches : region(ispace(int3d), fsp) 
     )
@@ -586,7 +587,7 @@ end
 -- rgn : parent region of data patches with fsp as the field space
 -- p   : partition of the sub-rgn by its left-most dimension as the color index-space
 function grid.createPartitionOfINextJNextSendBuffers (fsp)
-    local
+    local __demand(__leaf, __inline)
     task createPartitionOfINextJNextSendBuffers (
         patches : region(ispace(int3d), fsp) 
     )
@@ -616,7 +617,7 @@ end
 -- rgn : parent region of data patches with fsp as the field space
 -- p   : partition of the sub-rgn by its left-most dimension as the color index-space
 function grid.createPartitionOfINextJNextRecvBuffers (fsp)
-    local
+    local __demand(__leaf, __inline)
     task createPartitionOfINextJNextRecvBuffers (
         patches : region(ispace(int3d), fsp) 
     )
@@ -701,6 +702,7 @@ end
 
 
 -- Initialize the meta patches on base level
+__demand(__leaf, __inline)
 task grid.metaGridInit(
     meta_patches_region : region(ispace(int1d), grid_meta_fsp),
     meta_patches        : partition(disjoint, complete, meta_patches_region, ispace(int1d))
@@ -764,7 +766,7 @@ end
 -- src : source region
 -- Note: This function call assumes dst and src has the same size of index-space and they are disjoint (sub-) regions
 function grid.deepCopy(fsp)
-    local __demand(__inline)
+    local __demand(__leaf, __inline)
     task deepCopyTask(
         dst : region(ispace(int3d), fsp),
         src : region(ispace(int3d), fsp)
@@ -922,7 +924,8 @@ end
 
 
 -- Helper task: return the first pid wtih continuous available segment of "length" patches
-local task getAvailableSegPatches(
+local __demand(__leaf, __inline)
+task getAvailableSegPatches(
     meta_patches_region : region(ispace(int1d), grid_meta_fsp),
     meta_patches        : partition(disjoint, complete, meta_patches_region, ispace(int1d)),
     length              : int
@@ -934,6 +937,7 @@ do
     var offset     : int = grid.num_base_patches_i * grid.num_base_patches_j
     var num_checks : int = grid.num_patches_max - offset - length + 1
     var valid : bool
+    var ret: int = -1
     for pid in ispace(int1d, num_checks, offset) do
         valid = true
         for j = 0, length do
@@ -945,16 +949,21 @@ do
                 var pid_next = pid + int1d(j)
                 meta_patches[pid_next][pid_next].level = 9999
             end
-            return pid
+            ret = pid
+            break
         end
     end
-    regentlib.assert(false, "Cannot find any segment of available patches.")
+    if (ret == -1) then
+        regentlib.assert(false, "Cannot find any segment of available patches.")
+    end
+    return int1d(ret)
 end
 
 
 -- Enforce the activation of refine requests follows the AMR rule of refinement.
 -- TODO: finish this for more complicated refine patterns
-local __demand(__inline) task metaRefineFix(
+local __demand(__leaf, __inline)
+task metaRefineFix(
     meta_patches_region : region(ispace(int1d), grid_meta_fsp),
     meta_patches        : partition(disjoint, complete, meta_patches_region, ispace(int1d))
 )
@@ -1014,7 +1023,8 @@ end
 
 
 
-local __demand(__inline) task metaCoarsenFix(
+local __demand(__leaf, __inline)
+task metaCoarsenFix(
     meta_patches_region : region(ispace(int1d), grid_meta_fsp),
     meta_patches        : partition(disjoint, complete, meta_patches_region, ispace(int1d))
 )
@@ -1413,7 +1423,7 @@ end
 -- | child[0] | child[1] |
 -- |---------------------| --> i
 --
-__demand(__inline)
+__demand(__leaf, __inline)
 task grid.upsample (
     parent : region(ispace(int3d), double), -- full patch
     child0 : region(ispace(int3d), double), -- interior patch
@@ -1539,7 +1549,7 @@ end
 -- | child[0] | child[1] |
 -- |---------------------| --> i
 --
-__demand(__inline)
+__demand(__leaf, __inline)
 task grid.downsample (
     child0 : region(ispace(int3d), double), -- full patch
     child1 : region(ispace(int3d), double), -- full patch

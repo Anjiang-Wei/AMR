@@ -38,6 +38,7 @@ end
 
 
 -- Calculate coordinate of grid points with given patch coordinate and level
+__demand(__leaf, __inline)
 task solver.setGridPointCoordinates(
     grid_patch : region(ispace(int3d), grid_fsp),
     meta_patch : region(ispace(int1d), grid_meta_fsp)
@@ -269,7 +270,8 @@ end
 function SSPRK3Stage(stage)
     if      stage == 0 then
         -- u1 = u0 + u1 * dt
-        local task ssprk3Stage(
+        local __demand(__leaf, __inline)
+        task ssprk3Stage(
             dt : double,
             u0 : region(ispace(int3d), CVARS),
             u1 : region(ispace(int3d), CVARS)
@@ -298,7 +300,8 @@ function SSPRK3Stage(stage)
         return ssprk3Stage
     elseif stage == 1 then
         -- u2 = 0.75 * u0 + 0.25 * u1 + 0.25 * dt * u2
-        local task ssprk3Stage(
+        local __demand(__leaf, __inline)
+        task ssprk3Stage(
             dt : double,
             u0 : region(ispace(int3d), CVARS),
             u1 : region(ispace(int3d), CVARS),
@@ -329,7 +332,8 @@ function SSPRK3Stage(stage)
         return ssprk3Stage
     elseif stage == 2 then
         -- u0 = (1/3) * u0 + (2/3) * u2 + (2/3) * u1 * dt 
-        local task ssprk3Stage(
+        local __demand(__leaf, __inline)
+        task ssprk3Stage(
             dt : double,
             u0 : region(ispace(int3d), CVARS),
             u1 : region(ispace(int3d), CVARS),
@@ -542,7 +546,7 @@ do
     c.fclose(file)
 end
 
-__demand(__inline)
+__demand(__leaf, __inline)
 task solver.setRefineFlagsLeaf(
     rgn_patch_meta  : region(ispace(int1d), grid_meta_fsp),
     rgn_patch_cvars : region(ispace(int3d),         CVARS)
@@ -576,7 +580,7 @@ do
     end
 end
 
-__demand(__inline)
+__demand(__leaf, __inline)
 task solver.setCoarsenFlagsLeaf(
     rgn_patch_meta  : region(ispace(int1d), grid_meta_fsp),
     rgn_patch_cvars : region(ispace(int3d),         CVARS)
@@ -1029,7 +1033,7 @@ task solver.main()
     fill(rgn_patches_cvars_1.{mass, mmtx, mmty, enrg}, 0.0);
     fill(rgn_patches_cvars_2.{mass, mmtx, mmty, enrg}, 0.0);
 
-    __demand(__index_launch)
+    -- __demand(__index_launch)
     for color = 0, num_base_patches_i * num_base_patches_j do
        solver.setGridPointCoordinates(patches_grid_int[color], patches_meta[color])
     end
@@ -1037,7 +1041,7 @@ task solver.main()
     -- INITIALIZE GRAD_VEL to get rid of warnings (write_discard not supported)
     fill(rgn_patches_grad_vel.{dudx, dudy, dvdx, dvdy}, 0.0);
 
-    __demand(__index_launch)
+    -- __demand(__index_launch)
     for color = 0, num_base_patches_i * num_base_patches_j do
         problem_config.setInitialCondition(patches_grid_int[color], patches_meta[color], patches_cvars_0_int[color])
     end
@@ -1047,8 +1051,8 @@ task solver.main()
     -- TODO: Redo setInitialCondition on refined mesh
 
     solver.adjustMesh(rgn_patches_meta, rgn_patches_grid, rgn_patches_cvars_0, patches_meta, patches_grid_int, parts_cvars_0);
-    dumpDensity("density_000000.dat", grid.level_max, rgn_patches_cvars_0, rgn_patches_grid, rgn_patches_meta, patches_cvars_0_int, patches_grid_int);
-    writeActiveMeta("mesh_000000.dat", rgn_patches_meta, patches_meta);
+    dumpDensity("./data/density_000000.dat", grid.level_max, rgn_patches_cvars_0, rgn_patches_grid, rgn_patches_meta, patches_cvars_0_int, patches_grid_int);
+    writeActiveMeta("./data/mesh_000000.dat", rgn_patches_meta, patches_meta);
     --
     --
     -- TODO: Recursively refine mesh to higher levels
@@ -1089,8 +1093,8 @@ task solver.main()
         if i % stride == 0 then
             var filename_dat : &int8 = [&int8] (c.malloc(64*8))
             var filename_msh : &int8 = [&int8] (c.malloc(64*8))
-            c.sprintf(filename_dat, "density_%06d.dat", i+1);
-            c.sprintf(filename_msh, "mesh_%06d.dat", i+1);
+            c.sprintf(filename_dat, "./data/density_%06d.dat", i+1);
+            c.sprintf(filename_msh, "./data/mesh_%06d.dat", i+1);
             dumpDensity(filename_dat, grid.level_max, rgn_patches_cvars_0, rgn_patches_grid, rgn_patches_meta, patches_cvars_0_int, patches_grid_int);
             writeActiveMeta(filename_msh, rgn_patches_meta, patches_meta);
         end

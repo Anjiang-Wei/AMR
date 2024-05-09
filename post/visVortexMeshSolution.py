@@ -4,8 +4,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 
-dat_filename_fmt = "../src/density_{:06}.dat"
-msh_filename_fmt = "../src/mesh_{:06d}.dat"
+dat_filename_fmt = "../src/data/density_{:06}.dat"
+msh_filename_fmt = "../src/data/mesh_{:06d}.dat"
 fig_filename_fmt = "../figures/fig_{:06d}.png"
 
 domain_offset_x   = -6.0

@@ -18,6 +18,7 @@ local U0   = 0.5 * cmath.sqrt(eos.gamma * eos.Rg * T0)
 local AT   = (eos.gamma - 1.0) * eps * eps / (4.0 * alp * eos.gamma);
 local isen = 1.0 / (eos.gamma - 1.0);
 
+__demand(__leaf, __inline)
 task problem_config.setInitialCondition(
     grid_patch : region(ispace(int3d), grid_fsp),
     meta_patch : region(ispace(int1d), grid_meta_fsp),
