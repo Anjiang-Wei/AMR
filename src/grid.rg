@@ -783,67 +783,67 @@ function grid.deepCopy(fsp)
 end
 
 
------- Communication may occur
-function grid.fillGhosts(fsp)
-    local
-    task taskFillGhosts (
-        meta_patches                    : region(ispace(int1d), grid_meta_fsp),
-        meta_patches_part               : partition(disjoint, meta_patches, ispace(int1d)),
-        data_patches                    : region(ispace(int3d), fsp),
-        data_patches_i_prev_send        : partition(disjoint, data_patches, ispace(int1d)),
-        data_patches_i_next_send        : partition(disjoint, data_patches, ispace(int1d)),
-        data_patches_j_prev_send        : partition(disjoint, data_patches, ispace(int1d)),
-        data_patches_j_next_send        : partition(disjoint, data_patches, ispace(int1d)),
-        data_patches_i_prev_recv        : partition(disjoint, data_patches, ispace(int1d)),
-        data_patches_i_next_recv        : partition(disjoint, data_patches, ispace(int1d)),
-        data_patches_j_prev_recv        : partition(disjoint, data_patches, ispace(int1d)),
-        data_patches_j_next_recv        : partition(disjoint, data_patches, ispace(int1d)),
-        data_patches_i_prev_j_prev_send : partition(disjoint, data_patches, ispace(int1d)),
-        data_patches_i_prev_j_next_send : partition(disjoint, data_patches, ispace(int1d)),
-        data_patches_i_next_j_prev_send : partition(disjoint, data_patches, ispace(int1d)),
-        data_patches_i_next_j_next_send : partition(disjoint, data_patches, ispace(int1d)),
-        data_patches_i_prev_j_prev_recv : partition(disjoint, data_patches, ispace(int1d)),
-        data_patches_i_prev_j_next_recv : partition(disjoint, data_patches, ispace(int1d)),
-        data_patches_i_next_j_prev_recv : partition(disjoint, data_patches, ispace(int1d)),
-        data_patches_i_next_j_next_recv : partition(disjoint, data_patches, ispace(int1d))
-    )
-    where
-        reads (meta_patches.{i_prev, i_next, j_prev, j_next}),
-        reads writes (data_patches)
-    do
-        var csp = ispace(int1d, grid.num_patches_max, 0)
-        --__demand(__index_launch)
-        for pid in csp do
-            var i_prev : int = int(meta_patches_part[pid][pid].i_prev)
-            var i_next : int = int(meta_patches_part[pid][pid].i_next)
-            var j_prev : int = int(meta_patches_part[pid][pid].j_prev)
-            var j_next : int = int(meta_patches_part[pid][pid].j_next)
+-- ------ Communication may occur
+-- function grid.fillGhosts(fsp)
+--     local
+--     task taskFillGhosts (
+--         meta_patches                    : region(ispace(int1d), grid_meta_fsp),
+--         meta_patches_part               : partition(disjoint, meta_patches, ispace(int1d)),
+--         data_patches                    : region(ispace(int3d), fsp),
+--         data_patches_i_prev_send        : partition(disjoint, data_patches, ispace(int1d)),
+--         data_patches_i_next_send        : partition(disjoint, data_patches, ispace(int1d)),
+--         data_patches_j_prev_send        : partition(disjoint, data_patches, ispace(int1d)),
+--         data_patches_j_next_send        : partition(disjoint, data_patches, ispace(int1d)),
+--         data_patches_i_prev_recv        : partition(disjoint, data_patches, ispace(int1d)),
+--         data_patches_i_next_recv        : partition(disjoint, data_patches, ispace(int1d)),
+--         data_patches_j_prev_recv        : partition(disjoint, data_patches, ispace(int1d)),
+--         data_patches_j_next_recv        : partition(disjoint, data_patches, ispace(int1d)),
+--         data_patches_i_prev_j_prev_send : partition(disjoint, data_patches, ispace(int1d)),
+--         data_patches_i_prev_j_next_send : partition(disjoint, data_patches, ispace(int1d)),
+--         data_patches_i_next_j_prev_send : partition(disjoint, data_patches, ispace(int1d)),
+--         data_patches_i_next_j_next_send : partition(disjoint, data_patches, ispace(int1d)),
+--         data_patches_i_prev_j_prev_recv : partition(disjoint, data_patches, ispace(int1d)),
+--         data_patches_i_prev_j_next_recv : partition(disjoint, data_patches, ispace(int1d)),
+--         data_patches_i_next_j_prev_recv : partition(disjoint, data_patches, ispace(int1d)),
+--         data_patches_i_next_j_next_recv : partition(disjoint, data_patches, ispace(int1d))
+--     )
+--     where
+--         reads (meta_patches.{i_prev, i_next, j_prev, j_next}),
+--         reads writes (data_patches)
+--     do
+--         var csp = ispace(int1d, grid.num_patches_max, 0)
+--         --__demand(__index_launch)
+--         for pid in csp do
+--             var i_prev : int = int(meta_patches_part[pid][pid].i_prev)
+--             var i_next : int = int(meta_patches_part[pid][pid].i_next)
+--             var j_prev : int = int(meta_patches_part[pid][pid].j_prev)
+--             var j_next : int = int(meta_patches_part[pid][pid].j_next)
 
-            if (i_prev > -1) then
-                [grid.deepCopy(fsp)](data_patches_i_next_recv[int1d(i_prev)], data_patches_i_prev_send[pid]);
-                [grid.deepCopy(fsp)](data_patches_i_prev_recv[pid], data_patches_i_next_send[int1d(i_prev)]);
-            end
+--             if (i_prev > -1) then
+--                 [grid.deepCopy(fsp)](data_patches_i_next_recv[int1d(i_prev)], data_patches_i_prev_send[pid]);
+--                 [grid.deepCopy(fsp)](data_patches_i_prev_recv[pid], data_patches_i_next_send[int1d(i_prev)]);
+--             end
             
-            if (i_next > -1) then
-                [grid.deepCopy(fsp)](data_patches_i_prev_recv[int1d(i_next)], data_patches_i_next_send[pid]);
-                [grid.deepCopy(fsp)](data_patches_i_next_recv[pid], data_patches_i_prev_send[int1d(i_next)]);
-            end
+--             if (i_next > -1) then
+--                 [grid.deepCopy(fsp)](data_patches_i_prev_recv[int1d(i_next)], data_patches_i_next_send[pid]);
+--                 [grid.deepCopy(fsp)](data_patches_i_next_recv[pid], data_patches_i_prev_send[int1d(i_next)]);
+--             end
 
-            if (j_prev > -1) then
-                [grid.deepCopy(fsp)](data_patches_j_next_recv[int1d(j_prev)], data_patches_j_prev_send[pid]);
-                [grid.deepCopy(fsp)](data_patches_j_prev_recv[pid], data_patches_j_next_send[int1d(j_prev)]);
-            end
+--             if (j_prev > -1) then
+--                 [grid.deepCopy(fsp)](data_patches_j_next_recv[int1d(j_prev)], data_patches_j_prev_send[pid]);
+--                 [grid.deepCopy(fsp)](data_patches_j_prev_recv[pid], data_patches_j_next_send[int1d(j_prev)]);
+--             end
             
-            if (j_next > -1) then
-                [grid.deepCopy(fsp)](data_patches_j_prev_recv[int1d(j_next)], data_patches_j_next_send[pid]);
-                [grid.deepCopy(fsp)](data_patches_j_next_recv[pid], data_patches_j_prev_send[int1d(j_next)]);
-            end
+--             if (j_next > -1) then
+--                 [grid.deepCopy(fsp)](data_patches_j_prev_recv[int1d(j_next)], data_patches_j_next_send[pid]);
+--                 [grid.deepCopy(fsp)](data_patches_j_next_recv[pid], data_patches_j_prev_send[int1d(j_next)]);
+--             end
 
-        end
-    end
+--         end
+--     end
 
-    return taskFillGhosts
-end
+--     return taskFillGhosts
+-- end
 
 
 function grid.fillGhostsLevel(fsp, part_fsp)
