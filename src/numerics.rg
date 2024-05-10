@@ -1,4 +1,5 @@
 import "regent"
+local cmath = terralib.includec("math.h")
 
 local numerics = {}
 
@@ -89,21 +90,115 @@ struct numerics.CharVars {
     var0 : double,
     var1 : double,
     var2 : double,
-    var3 : double,
-    var4 : double
+    var3 : double
 }
 
-terra numerics.charDecompGetCharVars(prim_vars : numerics.CharVars, u : double, v : double, w : double, gamma : double, c : double) : numerics.CharVars
+
+terra numerics.charDecompGetCharVarsX(prim_vars : numerics.CharVars, u : double, v : double, gamma : double, c : double) : numerics.CharVars
     var char_vars : numerics.CharVars;
-    var gm1byc2 : double = (gamma - 1.0) / (c * c);
-    var ek : double = 0.5 * (u * u + v * v + w * w);
-    char_vars.var0 = prim_vars.var0 * (gm1byc2 * 0.5 * ek + 0.5 * u / c)
-                   + prim_vars.var1 * (-0.5 * gm1byc2 * u - 0.5 / c)
-                   + prim_vars.var2 * (-0.5 * gm1byc2 * v)
-                   + prim_vars.var3 * (-0.5 * gm1byc2 * w)
-                   + prim_vars.var4 * ( 0.5 * gm1byc2);
-    -- TODO: finish other transforms
+    var gm1byc2 : double = 0.5 * (gamma - 1.0) / (c * c);
+    var ek : double = 0.5 * (u * u + v * v);
+
+    char_vars.var0 = prim_vars.var0 * (gm1byc2 * ek + 0.5 * u / c)
+                   + prim_vars.var1 * (- gm1byc2 * u - 0.5 / c)
+                   + prim_vars.var2 * (- gm1byc2 * v)
+                   + prim_vars.var3 * gm1byc2;
+
+    char_vars.var1 = prim_vars.var0 * (-v)
+                   + prim_vars.var2;
+
+    char_vars.var2 = prim_vars.var0 * (1.0 - 2.0 * gm1byc2 * ek)
+                   + prim_vars.var1 * (2.0 * gm1byc2 * u)
+                   + prim_vars.var2 * (2.0 * gm1byc2 * v)
+                   + prim_vars.var3 * (-2.0 * gm1byc2);
+
+    char_vars.var3 = prim_vars.var0 * (gm1byc2 * ek - 0.5 * u / c)
+                   + prim_vars.var1 * (- gm1byc2 * u + 0.5 / c)
+                   + prim_vars.var2 * (- gm1byc2 * v)
+                   + prim_vars.var3 * gm1byc2;
+
+    return char_vars;
 end
+
+
+terra numerics.charDecompGetCharVarsY(prim_vars : numerics.CharVars, u : double, v : double, gamma : double, c : double) : numerics.CharVars
+    var char_vars : numerics.CharVars;
+    var gm1byc2 : double = 0.5 * (gamma - 1.0) / (c * c);
+    var ek : double = 0.5 * (u * u + v * v);
+
+    char_vars.var0 = prim_vars.var0 * (gm1byc2 * ek + 0.5 * v / c)
+                   + prim_vars.var1 * (- gm1byc2 * u)
+                   + prim_vars.var2 * (- gm1byc2 * v - 0.5 / c)
+                   + prim_vars.var3 * gm1byc2;
+
+    char_vars.var1 = prim_vars.var0 * (-u)
+                   + prim_vars.var1;
+
+    char_vars.var2 = prim_vars.var0 * (1.0 - 2.0 * gm1byc2 * ek)
+                   + prim_vars.var1 * (2.0 * gm1byc2 * u)
+                   + prim_vars.var2 * (2.0 * gm1byc2 * v)
+                   + prim_vars.var3 * (-2.0 * gm1byc2);
+
+    char_vars.var3 = prim_vars.var0 * (gm1byc2 * ek - 0.5 * u / c)
+                   + prim_vars.var1 * (- gm1byc2 * u)
+                   + prim_vars.var2 * (- gm1byc2 * v + 0.5 / c)
+                   + prim_vars.var3 * gm1byc2;
+
+    return char_vars;
+end
+
+
+terra numerics.charDecompGetConsVarsX(char_vars : numerics.CharVars, u : double, v : double, p : double, T : double, Rg : double, gamma : double) : numerics.CharVars
+    var cons_vars : numerics.CharVars;
+    var ek : double = 0.5 * (u * u + v * v);
+    var c  : double = cmath.sqrt(gamma * Rg * T);
+    var h  : double = gamma * Rg * T / (gamma - 1.0) + ek;
+
+    cons_vars.var0 = char_vars.var0 + char_vars.var2 + char_vars.var3;
+    
+    cons_vars.var1 = char_vars.var0 * (u - c)
+                   + char_vars.var2 * u
+                   + char_vars.var3 * (u + c);
+
+    cons_vars.var2 = char_vars.var0 * v
+                   + char_vars.var1
+                   + char_vars.var2 * v
+                   + char_vars.var3 * v;
+
+    cons_vars.var3 = char_vars.var0 * (h - c * u)
+                   + char_vars.var1 * v
+                   + char_vars.var2 * ek
+                   + char_vars.var3 * (h + c * u);
+
+    return cons_vars;
+end
+
+
+terra numerics.charDecompGetConsVarsY(char_vars : numerics.CharVars, u : double, v : double, p : double, T : double, Rg : double, gamma : double) : numerics.CharVars
+    var cons_vars : numerics.CharVars;
+    var ek : double = 0.5 * (u * u + v * v);
+    var c  : double = cmath.sqrt(gamma * Rg * T);
+    var h  : double = gamma * Rg * T / (gamma - 1.0) + ek;
+
+    cons_vars.var0 = char_vars.var0 + char_vars.var2 + char_vars.var3;
+    
+    cons_vars.var1 = char_vars.var0 * u
+                   + char_vars.var1
+                   + char_vars.var2 * u
+                   + char_vars.var3 * u;
+
+    cons_vars.var2 = char_vars.var0 * (v - c)
+                   + char_vars.var2 * v
+                   + char_vars.var3 * (v + c);
+
+    cons_vars.var3 = char_vars.var0 * (h - c * v)
+                   + char_vars.var1 * u
+                   + char_vars.var2 * ek
+                   + char_vars.var3 * (h + c * v);
+
+    return cons_vars;
+end
+
 
 return numerics
 
