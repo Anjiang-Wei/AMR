@@ -148,11 +148,10 @@ terra numerics.charDecompGetCharVarsY(prim_vars : numerics.CharVars, u : double,
 end
 
 
-terra numerics.charDecompGetConsVarsX(char_vars : numerics.CharVars, u : double, v : double, p : double, T : double, Rg : double, gamma : double) : numerics.CharVars
+terra numerics.charDecompGetConsVarsX(char_vars : numerics.CharVars, u : double, v : double, h : double, gamma : double) : numerics.CharVars
     var cons_vars : numerics.CharVars;
     var ek : double = 0.5 * (u * u + v * v);
-    var c  : double = cmath.sqrt(gamma * Rg * T);
-    var h  : double = gamma * Rg * T / (gamma - 1.0) + ek;
+    var c : double = cmath.sqrt((gamma - 1.0) * (h - ek));
 
     cons_vars.var0 = char_vars.var0 + char_vars.var2 + char_vars.var3;
     
@@ -174,11 +173,10 @@ terra numerics.charDecompGetConsVarsX(char_vars : numerics.CharVars, u : double,
 end
 
 
-terra numerics.charDecompGetConsVarsY(char_vars : numerics.CharVars, u : double, v : double, p : double, T : double, Rg : double, gamma : double) : numerics.CharVars
+terra numerics.charDecompGetConsVarsY(char_vars : numerics.CharVars, u : double, v : double, h : double, gamma : double) : numerics.CharVars
     var cons_vars : numerics.CharVars;
     var ek : double = 0.5 * (u * u + v * v);
-    var c  : double = cmath.sqrt(gamma * Rg * T);
-    var h  : double = gamma * Rg * T / (gamma - 1.0) + ek;
+    var c : double = cmath.sqrt((gamma - 1.0) * (h - ek));
 
     cons_vars.var0 = char_vars.var0 + char_vars.var2 + char_vars.var3;
     
@@ -199,6 +197,15 @@ terra numerics.charDecompGetConsVarsY(char_vars : numerics.CharVars, u : double,
     return cons_vars;
 end
 
+
+terra numerics.RiemannLF(S : double, UL : numerics.CharVars, UR : numerics.CharVars, FL : numerics.CharVars, FR : numerics.CharVars) : numerics.CharVars
+    var FRL : numerics.CharVars;
+    FRL.var0 = 0.5 * (FR.var0 + FL.var0) - 0.5 * S * (UR.var0 - UL.var0);
+    FRL.var1 = 0.5 * (FR.var1 + FL.var1) - 0.5 * S * (UR.var1 - UL.var1);
+    FRL.var2 = 0.5 * (FR.var2 + FL.var2) - 0.5 * S * (UR.var2 - UL.var2);
+    FRL.var3 = 0.5 * (FR.var3 + FL.var3) - 0.5 * S * (UR.var3 - UL.var3);
+    return FRL
+end
 
 return numerics
 
