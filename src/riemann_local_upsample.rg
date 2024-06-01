@@ -194,9 +194,9 @@ do
             var rhoR : double = cmath.sqrt(p_coll[stencil_idx_R] / (eos.Rg * T_coll[stencil_idx_R]));
             var uRL  : double = (u_coll[stencil_idx_L] * rhoL + u_coll[stencil_idx_R] * rhoR) / (rhoL + rhoR);
             var vRL  : double = (v_coll[stencil_idx_L] * rhoL + v_coll[stencil_idx_R] * rhoR) / (rhoL + rhoR);
-            var hL   : double = eos.gamma * eos.Rg * T_coll[stencil_idx_L] / (eos.gamma - 1.0) + 0.5 * (u_coll[stencil_idx_L] * u_coll[stencil_idx_L] + v_coll[stencil_idx_L] * v_coll[stencil_idx_L]); 
-            var hR   : double = eos.gamma * eos.Rg * T_coll[stencil_idx_R] / (eos.gamma - 1.0) + 0.5 * (u_coll[stencil_idx_R] * u_coll[stencil_idx_R] + v_coll[stencil_idx_R] * v_coll[stencil_idx_R]); 
-            var hRL  : double = (rhoL * hL + rhoR * hR) / (rhoL + rhoR);
+            var hL_c : double = eos.gamma * eos.Rg * T_coll[stencil_idx_L] / (eos.gamma - 1.0) + 0.5 * (u_coll[stencil_idx_L] * u_coll[stencil_idx_L] + v_coll[stencil_idx_L] * v_coll[stencil_idx_L]); 
+            var hR_c : double = eos.gamma * eos.Rg * T_coll[stencil_idx_R] / (eos.gamma - 1.0) + 0.5 * (u_coll[stencil_idx_R] * u_coll[stencil_idx_R] + v_coll[stencil_idx_R] * v_coll[stencil_idx_R]); 
+            var hRL  : double = (rhoL * hL_c + rhoR * hR_c) / (rhoL + rhoR);
             var aRL  : double = cmath.sqrt((eos.gamma - 1.0) * (hRL - 0.5 * (uRL * uRL + vRL * vRL)));
 
             for k = 0, 6 do
@@ -217,6 +217,40 @@ do
             char_vars_L.var3 = numerics.WENO5Z(cons_vars[0].var3, cons_vars[1].var3, cons_vars[2].var3, cons_vars[3].var3, cons_vars[4].var3);
             char_vars_R.var3 = numerics.WENO5Z(cons_vars[5].var3, cons_vars[4].var3, cons_vars[3].var3, cons_vars[2].var3, cons_vars[1].var3);
 
+            cons_vars[0] = numerics.charDecompGetConsVarsX(char_vars_L, uRL, vRL, hRL, eos.gamma);
+            cons_vars[1] = numerics.charDecompGetConsVarsX(char_vars_R, uRL, vRL, hRL, eos.gamma);
+
+            var rL =  cons_vars[0].var0;
+            var uL =  cons_vars[0].var1 / cons_vars[0].var0
+            var vL =  cons_vars[0].var2 / cons_vars[0].var0
+            var pL = (cons_vars[0].var3 - 0.5 * (uL * uL + vL * vL) * cons_vars[0].var0) * (eos.gamma - 1.0);
+            var hL = (cons_vars[0].var2 / cons_vars[0].var0 - 0.5 * (uL * uL + vL * vL)) * eos.gamma;
+            var aL = cmath.sqrt(eos.gamma * pL / rL);
+
+            var rR = cons_vars[1].var0;
+            var uR = cons_vars[1].var1 / cons_vars[1].var0;
+            var vR = cons_vars[1].var2 / cons_vars[1].var0;
+            var pR = (cons_vars[1].var3 - 0.5 * (uR * uR + vR * vR) * cons_vars[1].var0) * (eos.gamma - 1.0);
+            var hR = (cons_vars[1].var2 / cons_vars[1].var0 - 0.5 * (uR * uR + vR * vR)) * eos.gamma;
+            var aR = cmath.sqrt(eos.gamma * pR / rR);
+
+            var flx_mass_L : double = rL * uL;
+            var flx_mmtx_L : double = rL * uL * uL + pL;
+            var flx_mmty_L : double = rL * uL * vL;
+            var flx_enrg_L : double = rL * (hL + 0.5 * (uL * uL + vL * vL)) * uL;
+
+            var flx_mass_R : double = rR * uR;
+            var flx_mmtx_R : double = rR * uR * uR + pR;
+            var flx_mmty_R : double = rR * uR * vR;
+            var flx_enrg_R : double = rR * (hR + 0.5 * (uR * uR + vR * vR)) * uR;
+
+            var S : double = cmath.fmax(cmath.fabs(uL) + aL, cmath.fabs(uR) + aR);
+
+            var LF_flx_mass : double = 0.5 * (flx_mass_L + flx_mass_R) - 0.5 * S * (cons_vars[1].var0 - cons_vars[0].var0);
+            var LF_flx_mmtx : double = 0.5 * (flx_mmtx_L + flx_mmtx_R) - 0.5 * S * (cons_vars[1].var1 - cons_vars[0].var1);
+            var LF_flx_mmty : double = 0.5 * (flx_mmty_L + flx_mmty_R) - 0.5 * S * (cons_vars[1].var2 - cons_vars[0].var2);
+            var LF_flx_enrg : double = 0.5 * (flx_enrg_L + flx_enrg_R) - 0.5 * S * (cons_vars[1].var3 - cons_vars[0].var3);
+
             var u : double = numerics.midInterp(u_coll[i_coll - 1], u_coll[i_coll], u_coll[i_coll + 1], u_coll[i_coll + 2]);
             var v : double = numerics.midInterp(v_coll[i_coll - 1], v_coll[i_coll], v_coll[i_coll + 1], v_coll[i_coll + 2]);
             var T : double = numerics.midInterp(T_coll[i_coll - 1], T_coll[i_coll], T_coll[i_coll + 1], T_coll[i_coll + 2]);
@@ -235,10 +269,14 @@ do
             var st11: double = 2.0 * mu *  dudx - (2.0/3.0) * mu * (dudx + dvdy);
             var st21: double = 2.0 * mu * (dvdx + dudy);
 
-            flux_mass[i] = -rho * u;
-            flux_mmtx[i] = -rho * u * u - p + st11;
-            flux_mmty[i] = -rho * v * u     + st21;
-            flux_enrg[i] = -H   *     u     + u * st11 + v * st21 + kap * dTdx;
+            flux_mass[i] = -LF_flx_mass;
+            flux_mmtx[i] = -LF_flx_mmtx + st11;
+            flux_mmty[i] = -LF_flx_mmty + st21;
+            flux_enrg[i] = -LF_flx_enrg + u * st11 + v * st21 + kap * dTdx;
+            --flux_mass[i] = -rho * u;
+            --flux_mmtx[i] = -rho * u * u - p + st11;
+            --flux_mmty[i] = -rho * v * u     + st21;
+            --flux_enrg[i] = -H   *     u     + u * st11 + v * st21 + kap * dTdx;
         end
         var flux_div_x_mass : double = numerics.der1Stag(flux_mass[0], flux_mass[1], flux_mass[2], flux_mass[3], inv_dx)
         var flux_div_x_mmtx : double = numerics.der1Stag(flux_mmtx[0], flux_mmtx[1], flux_mmtx[2], flux_mmtx[3], inv_dx)
