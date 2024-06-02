@@ -5,13 +5,18 @@ TARGET_DIR=build
 
 CWD=$PWD
 SRC_FILE=$CWD/$TARGET.rg
-
+DATA_DIR=$CWD/data
 
 if [ ! -f $SRC_FILE ]; then
     echo "[ERROR] Cannot find \"$SRC_FILE\"."
     exit
 else
     echo "Compile source code \"$SRC_FILE\" to \"$TARGET_DIR\"."
+fi
+
+if [ ! -d $DATA_DIR ]; then
+    echo "Create a new directory \"$DATA_DIR\""
+    mkdir -p $DATA_DIR
 fi
 
 if [ ! -d $TARGET_DIR ]; then

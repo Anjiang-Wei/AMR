@@ -205,7 +205,7 @@ do
                 cons_vars[k].var0 = rho;
                 cons_vars[k].var1 = rho * u_coll[idx_local];
                 cons_vars[k].var2 = rho * v_coll[idx_local];
-                cons_vars[k].var3 = rho * eos.Rg * T_coll[idx_local] / (eos.gamma - 1.0);
+                cons_vars[k].var3 = rho * (eos.Rg * T_coll[idx_local] / (eos.gamma - 1.0) + 0.5 * (u_coll[idx_local] * u_coll[idx_local] + v_coll[idx_local] * v_coll[idx_local]));
                 cons_vars[k] = numerics.charDecompGetCharVarsX(cons_vars[k], uRL, vRL, eos.gamma, aRL);
             end
             char_vars_L.var0 = numerics.WENO5Z(cons_vars[0].var0, cons_vars[1].var0, cons_vars[2].var0, cons_vars[3].var0, cons_vars[4].var0);
@@ -224,24 +224,24 @@ do
             var uL =  cons_vars[0].var1 / cons_vars[0].var0
             var vL =  cons_vars[0].var2 / cons_vars[0].var0
             var pL = (cons_vars[0].var3 - 0.5 * (uL * uL + vL * vL) * cons_vars[0].var0) * (eos.gamma - 1.0);
-            var hL = (cons_vars[0].var2 / cons_vars[0].var0 - 0.5 * (uL * uL + vL * vL)) * eos.gamma;
+            var hL = (cons_vars[0].var3 / cons_vars[0].var0 - 0.5 * (uL * uL + vL * vL)) * eos.gamma;
             var aL = cmath.sqrt(eos.gamma * pL / rL);
 
             var rR = cons_vars[1].var0;
             var uR = cons_vars[1].var1 / cons_vars[1].var0;
             var vR = cons_vars[1].var2 / cons_vars[1].var0;
             var pR = (cons_vars[1].var3 - 0.5 * (uR * uR + vR * vR) * cons_vars[1].var0) * (eos.gamma - 1.0);
-            var hR = (cons_vars[1].var2 / cons_vars[1].var0 - 0.5 * (uR * uR + vR * vR)) * eos.gamma;
+            var hR = (cons_vars[1].var3 / cons_vars[1].var0 - 0.5 * (uR * uR + vR * vR)) * eos.gamma;
             var aR = cmath.sqrt(eos.gamma * pR / rR);
 
             var flx_mass_L : double = rL * uL;
             var flx_mmtx_L : double = rL * uL * uL + pL;
-            var flx_mmty_L : double = rL * uL * vL;
+            var flx_mmty_L : double = rL * vL * uL;
             var flx_enrg_L : double = rL * (hL + 0.5 * (uL * uL + vL * vL)) * uL;
 
             var flx_mass_R : double = rR * uR;
             var flx_mmtx_R : double = rR * uR * uR + pR;
-            var flx_mmty_R : double = rR * uR * vR;
+            var flx_mmty_R : double = rR * vR * uR;
             var flx_enrg_R : double = rR * (hR + 0.5 * (uR * uR + vR * vR)) * uR;
 
             var S : double = cmath.fmax(cmath.fabs(uL) + aL, cmath.fabs(uR) + aR);
@@ -305,10 +305,63 @@ do
             var rhoR : double = cmath.sqrt(p_coll[stencil_idx_R] / (eos.Rg * T_coll[stencil_idx_R]));
             var uRL  : double = (u_coll[stencil_idx_L] * rhoL + u_coll[stencil_idx_R] * rhoR) / (rhoL + rhoR);
             var vRL  : double = (v_coll[stencil_idx_L] * rhoL + v_coll[stencil_idx_R] * rhoR) / (rhoL + rhoR);
-            var hL   : double = eos.gamma * eos.Rg * T_coll[stencil_idx_L] / (eos.gamma - 1.0) + 0.5 * (u_coll[stencil_idx_L] * u_coll[stencil_idx_L] + v_coll[stencil_idx_L] * v_coll[stencil_idx_L]); 
-            var hR   : double = eos.gamma * eos.Rg * T_coll[stencil_idx_R] / (eos.gamma - 1.0) + 0.5 * (u_coll[stencil_idx_R] * u_coll[stencil_idx_R] + v_coll[stencil_idx_R] * v_coll[stencil_idx_R]); 
-            var hRL  : double = (rhoL * hL + rhoR * hR) / (rhoL + rhoR);
+            var hL_c : double = eos.gamma * eos.Rg * T_coll[stencil_idx_L] / (eos.gamma - 1.0) + 0.5 * (u_coll[stencil_idx_L] * u_coll[stencil_idx_L] + v_coll[stencil_idx_L] * v_coll[stencil_idx_L]); 
+            var hR_c : double = eos.gamma * eos.Rg * T_coll[stencil_idx_R] / (eos.gamma - 1.0) + 0.5 * (u_coll[stencil_idx_R] * u_coll[stencil_idx_R] + v_coll[stencil_idx_R] * v_coll[stencil_idx_R]); 
+            var hRL  : double = (rhoL * hL_c + rhoR * hR_c) / (rhoL + rhoR);
             var aRL  : double = cmath.sqrt((eos.gamma - 1.0) * (hRL - 0.5 * (uRL * uRL + vRL * vRL)));
+
+            for k = 0, 6 do
+                var idx_local : int = j_coll - 2 + k;
+                var rho : double = p_coll[idx_local] / (eos.Rg * T_coll[idx_local]);
+                cons_vars[k].var0 = rho;
+                cons_vars[k].var1 = rho * u_coll[idx_local];
+                cons_vars[k].var2 = rho * v_coll[idx_local];
+                cons_vars[k].var3 = rho * (eos.Rg * T_coll[idx_local] / (eos.gamma - 1.0) + 0.5 * (u_coll[idx_local] * u_coll[idx_local] + v_coll[idx_local] * v_coll[idx_local]));
+                cons_vars[k] = numerics.charDecompGetCharVarsY(cons_vars[k], uRL, vRL, eos.gamma, aRL);
+            end
+            char_vars_L.var0 = numerics.WENO5Z(cons_vars[0].var0, cons_vars[1].var0, cons_vars[2].var0, cons_vars[3].var0, cons_vars[4].var0);
+            char_vars_R.var0 = numerics.WENO5Z(cons_vars[5].var0, cons_vars[4].var0, cons_vars[3].var0, cons_vars[2].var0, cons_vars[1].var0);
+            char_vars_L.var1 = numerics.WENO5Z(cons_vars[0].var1, cons_vars[1].var1, cons_vars[2].var1, cons_vars[3].var1, cons_vars[4].var1);
+            char_vars_R.var1 = numerics.WENO5Z(cons_vars[5].var1, cons_vars[4].var1, cons_vars[3].var1, cons_vars[2].var1, cons_vars[1].var1);
+            char_vars_L.var2 = numerics.WENO5Z(cons_vars[0].var2, cons_vars[1].var2, cons_vars[2].var2, cons_vars[3].var2, cons_vars[4].var2);
+            char_vars_R.var2 = numerics.WENO5Z(cons_vars[5].var2, cons_vars[4].var2, cons_vars[3].var2, cons_vars[2].var2, cons_vars[1].var2);
+            char_vars_L.var3 = numerics.WENO5Z(cons_vars[0].var3, cons_vars[1].var3, cons_vars[2].var3, cons_vars[3].var3, cons_vars[4].var3);
+            char_vars_R.var3 = numerics.WENO5Z(cons_vars[5].var3, cons_vars[4].var3, cons_vars[3].var3, cons_vars[2].var3, cons_vars[1].var3);
+
+            cons_vars[0] = numerics.charDecompGetConsVarsY(char_vars_L, uRL, vRL, hRL, eos.gamma);
+            cons_vars[1] = numerics.charDecompGetConsVarsY(char_vars_R, uRL, vRL, hRL, eos.gamma);
+
+            var rL =  cons_vars[0].var0;
+            var uL =  cons_vars[0].var1 / cons_vars[0].var0
+            var vL =  cons_vars[0].var2 / cons_vars[0].var0
+            var pL = (cons_vars[0].var3 - 0.5 * (uL * uL + vL * vL) * cons_vars[0].var0) * (eos.gamma - 1.0);
+            var hL = (cons_vars[0].var3 / cons_vars[0].var0 - 0.5 * (uL * uL + vL * vL)) * eos.gamma;
+            var aL = cmath.sqrt(eos.gamma * pL / rL);
+
+            var rR = cons_vars[1].var0;
+            var uR = cons_vars[1].var1 / cons_vars[1].var0;
+            var vR = cons_vars[1].var2 / cons_vars[1].var0;
+            var pR = (cons_vars[1].var3 - 0.5 * (uR * uR + vR * vR) * cons_vars[1].var0) * (eos.gamma - 1.0);
+            var hR = (cons_vars[1].var3 / cons_vars[1].var0 - 0.5 * (uR * uR + vR * vR)) * eos.gamma;
+            var aR = cmath.sqrt(eos.gamma * pR / rR);
+
+            var flx_mass_L : double = rL * vL;
+            var flx_mmtx_L : double = rL * uL * vL;
+            var flx_mmty_L : double = rL * vL * vL + pL;
+            var flx_enrg_L : double = rL * (hL + 0.5 * (uL * uL + vL * vL)) * vL;
+
+            var flx_mass_R : double = rR * vR;
+            var flx_mmtx_R : double = rR * uR * vR;
+            var flx_mmty_R : double = rR * vR * vR + pR;
+            var flx_enrg_R : double = rR * (hR + 0.5 * (uR * uR + vR * vR)) * vR;
+
+            var S : double = cmath.fmax(cmath.fabs(vL) + aL, cmath.fabs(vR) + aR);
+
+            var LF_flx_mass : double = 0.5 * (flx_mass_L + flx_mass_R) - 0.5 * S * (cons_vars[1].var0 - cons_vars[0].var0);
+            var LF_flx_mmtx : double = 0.5 * (flx_mmtx_L + flx_mmtx_R) - 0.5 * S * (cons_vars[1].var1 - cons_vars[0].var1);
+            var LF_flx_mmty : double = 0.5 * (flx_mmty_L + flx_mmty_R) - 0.5 * S * (cons_vars[1].var2 - cons_vars[0].var2);
+            var LF_flx_enrg : double = 0.5 * (flx_enrg_L + flx_enrg_R) - 0.5 * S * (cons_vars[1].var3 - cons_vars[0].var3);
+
             var u : double = numerics.midInterp(u_coll[j_coll - 1], u_coll[j_coll], u_coll[j_coll + 1], u_coll[j_coll + 2]);
             var v : double = numerics.midInterp(v_coll[j_coll - 1], v_coll[j_coll], v_coll[j_coll + 1], v_coll[j_coll + 2]);
             var T : double = numerics.midInterp(T_coll[j_coll - 1], T_coll[j_coll], T_coll[j_coll + 1], T_coll[j_coll + 2]);
@@ -327,10 +380,10 @@ do
             var st12: double = 2.0 * mu * (dvdx + dudy);
             var st22: double = 2.0 * mu *  dvdy - (2.0/3.0) * mu * (dudx + dvdy);
 
-            flux_mass[j] = -rho * v;
-            flux_mmtx[j] = -rho * u * v     + st12;
-            flux_mmty[j] = -rho * v * v - p + st22;
-            flux_enrg[j] = -H   *     v     + u * st12 + v * st22 + kap * dTdy;
+            flux_mass[j] = -LF_flx_mass;
+            flux_mmtx[j] = -LF_flx_mmtx + st12;
+            flux_mmty[j] = -LF_flx_mmty + st22;
+            flux_enrg[j] = -LF_flx_enrg + u * st12 + v * st22 + kap * dTdy;
         end
         var flux_div_y_mass : double = numerics.der1Stag(flux_mass[0], flux_mass[1], flux_mass[2], flux_mass[3], inv_dy)
         var flux_div_y_mmtx : double = numerics.der1Stag(flux_mmtx[0], flux_mmtx[1], flux_mmtx[2], flux_mmtx[3], inv_dy)

@@ -139,7 +139,7 @@ terra numerics.charDecompGetCharVarsY(prim_vars : numerics.CharVars, u : double,
                    + prim_vars.var2 * (2.0 * gm1byc2 * v)
                    + prim_vars.var3 * (-2.0 * gm1byc2);
 
-    char_vars.var3 = prim_vars.var0 * (gm1byc2 * ek - 0.5 * u / c)
+    char_vars.var3 = prim_vars.var0 * (gm1byc2 * ek - 0.5 * v / c)
                    + prim_vars.var1 * (- gm1byc2 * u)
                    + prim_vars.var2 * (- gm1byc2 * v + 0.5 / c)
                    + prim_vars.var3 * gm1byc2;
