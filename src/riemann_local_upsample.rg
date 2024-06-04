@@ -1,6 +1,6 @@
 import "regent"
-local usr_config     = require("input")
-local problem_config = require("problem_config")
+local usr_config     = require("input_riemann")
+local problem_config = require("problem_config_riemann")
 local c              = regentlib.c
 local stdlib         = terralib.includec("stdlib.h")
 local string         = terralib.includec("string.h")
