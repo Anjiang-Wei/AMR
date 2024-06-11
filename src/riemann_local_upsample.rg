@@ -1,5 +1,5 @@
 import "regent"
-local usr_config     = require("input_riemann")
+local usr_config     = require("input")
 local problem_config = require("problem_config_riemann")
 local c              = regentlib.c
 local stdlib         = terralib.includec("stdlib.h")
@@ -684,31 +684,31 @@ end
 __demand(__leaf, __inline)
 task solver.setRefineFlagsLeaf(
     rgn_patch_meta  : region(ispace(int1d), grid_meta_fsp),
-    rgn_patch_cvars : region(ispace(int3d),         CVARS)
+    rgn_patch_cvars : region(ispace(int3d),         CVARS),
+    isp : ispace(int3d)
 )
 where
     reads (rgn_patch_cvars),
     reads writes (rgn_patch_meta)
 do
-    var isp = rgn_patch_cvars.ispace
     var pid = isp.bounds.lo.x
-    var T0  = 1.0 / (eos.Rg * eos.gamma)
-    var U0  = 0.5 * cmath.sqrt(eos.gamma * eos.Rg * T0)
-
-
-    var threshold : double = 0.98;
-    -- if (rgn_patch_meta[int1d(pid)].level == 0) then
-    --     threshold = 0.98
-    -- elseif (rgn_patch_meta[int1d(pid)].level == 1) then
-    --     threshold = 0.0 -- 0.88
-    -- end
+    var threshold : double = 0.95;
 
     -- Set refine flag
     var count : int = 0;
     for ij in isp do
-        count += int(rgn_patch_cvars[ij].mass < threshold)
+        var rho_00 : double = rgn_patch_cvars[ij].mass 
+        var rho_xL : double = rgn_patch_cvars[ij - int3d({0, 1, 0})].mass
+        var rho_xR : double = rgn_patch_cvars[ij + int3d({0, 1, 0})].mass
+        var rho_yL : double = rgn_patch_cvars[ij - int3d({0, 0, 1})].mass
+        var rho_yR : double = rgn_patch_cvars[ij + int3d({0, 0, 1})].mass
+
+        var shock_sensor : double = cmath.fabs(rho_xL + rho_xR + rho_yL + rho_yR - 4.0 * rho_00)
+                                  / (cmath.fabs(rho_xL - rho_00) + cmath.fabs(rho_xR - rho_00) 
+                                   + cmath.fabs(rho_yL - rho_00) + cmath.fabs(rho_yR - rho_00) + 1e-5)
+        count += int(shock_sensor > threshold)
     end
-    if (count > 2) then
+    if (count > 5) then
         rgn_patch_meta[int1d(pid)].refine_req = true;
     else
         rgn_patch_meta[int1d(pid)].refine_req = false;
@@ -718,30 +718,31 @@ end
 __demand(__leaf, __inline)
 task solver.setCoarsenFlagsLeaf(
     rgn_patch_meta  : region(ispace(int1d), grid_meta_fsp),
-    rgn_patch_cvars : region(ispace(int3d),         CVARS)
+    rgn_patch_cvars : region(ispace(int3d),         CVARS),
+    isp : ispace(int3d)
 )
 where
     reads (rgn_patch_cvars),
     reads writes (rgn_patch_meta)
 do
-    var isp = rgn_patch_cvars.ispace
     var pid = isp.bounds.lo.x
-    var T0  = 1.0 / (eos.Rg * eos.gamma)
-    var U0  = 0.5 * cmath.sqrt(eos.gamma * eos.Rg * T0)
-
     var threshold : double = 0.99 - 0.10 * (rgn_patch_meta[int1d(pid)].level - 1);
-    -- if (rgn_patch_meta[int1d(pid)].level == 0) then
-    --     threshold = 0.99
-    -- else
-    --     threshold = 9999.9-- 0.88
-    -- end
-
     -- Set coarsen flag
     var count = 0
+    var threashold : double = 0.9
     for ij in isp do
-        count += int(rgn_patch_cvars[ij].mass > threshold)
+        var rho_00 : double = rgn_patch_cvars[ij].mass 
+        var rho_xL : double = rgn_patch_cvars[ij - int3d({0, 1, 0})].mass
+        var rho_xR : double = rgn_patch_cvars[ij + int3d({0, 1, 0})].mass
+        var rho_yL : double = rgn_patch_cvars[ij - int3d({0, 0, 1})].mass
+        var rho_yR : double = rgn_patch_cvars[ij + int3d({0, 0, 1})].mass
+
+        var shock_sensor : double = cmath.fabs(rho_xL + rho_xR + rho_yL + rho_yR - 4.0 * rho_00)
+                                  / (cmath.fabs(rho_xL - rho_00) + cmath.fabs(rho_xR - rho_00) 
+                                   + cmath.fabs(rho_yL - rho_00) + cmath.fabs(rho_yR - rho_00) + 1e-5)
+        count += int(shock_sensor > threshold)
     end
-    if (count > 245) then
+    if (count < 20) then
         rgn_patch_meta[int1d(pid)].coarsen_req = true;
         if (rgn_patch_meta[int1d(pid)].child[0] > -1) then
             rgn_patch_meta[int1d(rgn_patch_meta[int1d(pid)].child[0])].coarsen_req = true
@@ -765,15 +766,16 @@ where
     reads writes (rgn_patches_meta, rgn_patches_grid, rgn_patches_cvars)
 do 
     for l = 0, grid.level_max do
+        [grid.fillGhostsLevel(CVARS, AllPartitionGroupCVARS)](l, rgn_patches_meta, patches_meta, rgn_patches_cvars, parts_cvars);
         for color in patches_meta.colors do
             if (patches_meta[int1d(color)][int1d(color)].level == l) then
-                solver.setRefineFlagsLeaf(patches_meta[int1d(color)], parts_cvars.patch_int[int1d(color)])
+                solver.setRefineFlagsLeaf(patches_meta[int1d(color)], parts_cvars.patch_full[int1d(color)], parts_cvars.patch_int[int1d(color)].ispace)
             end
         end
         grid.refineInit(rgn_patches_meta, patches_meta)
-        if (l > 0) then
-            [grid.fillGhostsLevel(CVARS, AllPartitionGroupCVARS)](l - 1, rgn_patches_meta, patches_meta, rgn_patches_cvars, parts_cvars);
-        end
+        --if (l > 0) then
+        --    [grid.fillGhostsLevel(CVARS, AllPartitionGroupCVARS)](l - 1, rgn_patches_meta, patches_meta, rgn_patches_cvars, parts_cvars);
+        --end
         for color in patches_meta.colors do
             var parent_meta = patches_meta[int1d(color)][int1d(color)]
             if (parent_meta.level > -1 and parent_meta.level == l - 1 and parent_meta.refine_req) then
@@ -855,7 +857,7 @@ do
     for l = grid.level_max, 0, -1 do
         for color in patches_meta.colors do
             if (patches_meta[int1d(color)][int1d(color)].level == l) then
-                solver.setCoarsenFlagsLeaf(patches_meta[int1d(color)], parts_cvars.patch_int[int1d(color)])
+                solver.setCoarsenFlagsLeaf(patches_meta[int1d(color)], parts_cvars.patch_full[int1d(color)], parts_cvars.patch_int[int1d(color)].ispace)
             end
         end
         grid.coarsenInit(rgn_patches_meta, patches_meta)

@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 
 dat_filename_fmt = "../src/data/density_{:06}.dat"
 msh_filename_fmt = "../src/data/mesh_{:06d}.dat"
-fig_filename_fmt = "../figures/fig_{:06d}.png"
+fig_filename_fmt = "../figures2/fig_{:06d}.png"
 
 domain_offset_x   = -6.0
 domain_offset_y   = -6.0
@@ -16,7 +16,7 @@ base_patch_length = 12.0 / num_patches
 
 
 def main():
-    tid_list = np.arange(1, 502, 4)
+    tid_list = np.arange(0, 3000, 1)
     # ./compile_pde_local_upsample.sh
     # mpirun build/test_pde_local_upsample 504 0.05 4 -ll:util 10 -ll:cpu 10
     for i in range(len(tid_list)):
@@ -77,7 +77,7 @@ def generateVisData(data_file, cmap='gnuplot2_r', vmin=None, vmax=None, rasteriz
 
     level_max = int(np.max(levels) + 1.1)
     # Which levels to visualize
-    level_list = np.arange(0, 3)
+    level_list = np.arange(0, 1)
     for l in level_list:
         pid_level = np.where(np.int32(levels) == l)[0]
         for pid in pid_level:

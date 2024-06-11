@@ -5,7 +5,13 @@ TARGET_DIR=build
 
 CWD=$PWD
 SRC_FILE=$CWD/$TARGET.rg
+INPUT_FILE=$CWD/input_riemann.rg
 DATA_DIR=$CWD/data
+
+if [ -f $CWD/input.rg ]; then
+    rm $CWD/input.rg
+fi
+ln -s $INPUT_FILE $CWD/input.rg
 
 if [ ! -f $SRC_FILE ]; then
     echo "[ERROR] Cannot find \"$SRC_FILE\"."
