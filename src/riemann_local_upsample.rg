@@ -31,6 +31,23 @@ local AllPartitionGroupGradVel  = grid.groupAllPartitions(GRAD_VEL)
 
 local solver = {}
 
+struct TunableParams {
+    refine_score_threshold  : double;
+    refine_count_threshold  :    int;
+    coarsen_score_threshold : double;
+    coarsen_count_threshold :    int;
+};
+
+terra getTunableParams(args_offset : int) : TunableParams
+    var args = c.legion_runtime_get_input_args();
+    var params : TunableParams;
+    params.refine_score_threshold  = c.atof(args.argv[args_offset + 0]);
+    params.refine_count_threshold  = c.atoi(args.argv[args_offset + 1]);
+    params.coarsen_score_threshold = c.atof(args.argv[args_offset + 2]);
+    params.coarsen_count_threshold = c.atoi(args.argv[args_offset + 3]);
+    return params;
+end
+
 local
 terra pow2(e : int) : int
     return 1 << e
@@ -692,7 +709,7 @@ where
     reads writes (rgn_patch_meta)
 do
     var pid = isp.bounds.lo.x
-    var threshold : double = 0.95;
+    var threshold : double = params.refine_score_threshold;
 
     -- Set refine flag
     var count : int = 0;
@@ -708,7 +725,7 @@ do
                                    + cmath.fabs(rho_yL - rho_00) + cmath.fabs(rho_yR - rho_00) + 1e-5)
         count += int(shock_sensor > threshold)
     end
-    if (count > 5) then
+    if (count > params.refine_count_threshold) then
         rgn_patch_meta[int1d(pid)].refine_req = true;
     else
         rgn_patch_meta[int1d(pid)].refine_req = false;
@@ -726,10 +743,9 @@ where
     reads writes (rgn_patch_meta)
 do
     var pid = isp.bounds.lo.x
-    var threshold : double = 0.99 - 0.10 * (rgn_patch_meta[int1d(pid)].level - 1);
     -- Set coarsen flag
     var count = 0
-    var threashold : double = 0.9
+    var threshold : double = params.coarsen_score_threshold;
     for ij in isp do
         var rho_00 : double = rgn_patch_cvars[ij].mass 
         var rho_xL : double = rgn_patch_cvars[ij - int3d({0, 1, 0})].mass
@@ -742,7 +758,7 @@ do
                                    + cmath.fabs(rho_yL - rho_00) + cmath.fabs(rho_yR - rho_00) + 1e-5)
         count += int(shock_sensor > threshold)
     end
-    if (count < 20) then
+    if (count < params.coarsen_count_threshold) then
         rgn_patch_meta[int1d(pid)].coarsen_req = true;
         if (rgn_patch_meta[int1d(pid)].child[0] > -1) then
             rgn_patch_meta[int1d(rgn_patch_meta[int1d(pid)].child[0])].coarsen_req = true
@@ -899,6 +915,7 @@ task solver.main()
     var loop_cnt:     int = c.atoi(args.argv[1]);
     var time_step: double = c.atof(args.argv[2]);
     var stride:       int = c.atoi(args.argv[3]);
+    var params : TunableParams = getTunableParams(4);
     -- 
     c.printf("Solver initialization:")
     c.printf("  -- Patch size (interior) : %d x %d\n", grid.patch_size, grid.patch_size)
