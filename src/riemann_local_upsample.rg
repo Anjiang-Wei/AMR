@@ -702,7 +702,8 @@ __demand(__leaf, __inline)
 task solver.setRefineFlagsLeaf(
     rgn_patch_meta  : region(ispace(int1d), grid_meta_fsp),
     rgn_patch_cvars : region(ispace(int3d),         CVARS),
-    isp : ispace(int3d)
+    isp : ispace(int3d),
+    params : TunableParams
 )
 where
     reads (rgn_patch_cvars),
@@ -736,7 +737,8 @@ __demand(__leaf, __inline)
 task solver.setCoarsenFlagsLeaf(
     rgn_patch_meta  : region(ispace(int1d), grid_meta_fsp),
     rgn_patch_cvars : region(ispace(int3d),         CVARS),
-    isp : ispace(int3d)
+    isp : ispace(int3d),
+    params : TunableParams
 )
 where
     reads (rgn_patch_cvars),
@@ -776,7 +778,8 @@ task solver.adjustMesh(
     rgn_patches_cvars : region(ispace(int3d),         CVARS),
     patches_meta      : partition(disjoint, rgn_patches_meta , ispace(int1d)),
     patches_grid_int  : partition(disjoint, rgn_patches_grid , ispace(int1d)),
-    parts_cvars        : AllPartitionGroupCVARS(rgn_patches_cvars)
+    parts_cvars        : AllPartitionGroupCVARS(rgn_patches_cvars),
+    params : TunableParams
 )
 where
     reads writes (rgn_patches_meta, rgn_patches_grid, rgn_patches_cvars)
@@ -785,7 +788,7 @@ do
         [grid.fillGhostsLevel(CVARS, AllPartitionGroupCVARS)](l, rgn_patches_meta, patches_meta, rgn_patches_cvars, parts_cvars);
         for color in patches_meta.colors do
             if (patches_meta[int1d(color)][int1d(color)].level == l) then
-                solver.setRefineFlagsLeaf(patches_meta[int1d(color)], parts_cvars.patch_full[int1d(color)], parts_cvars.patch_int[int1d(color)].ispace)
+                solver.setRefineFlagsLeaf(patches_meta[int1d(color)], parts_cvars.patch_full[int1d(color)], parts_cvars.patch_int[int1d(color)].ispace, params)
             end
         end
         grid.refineInit(rgn_patches_meta, patches_meta)
@@ -873,7 +876,7 @@ do
     for l = grid.level_max, 0, -1 do
         for color in patches_meta.colors do
             if (patches_meta[int1d(color)][int1d(color)].level == l) then
-                solver.setCoarsenFlagsLeaf(patches_meta[int1d(color)], parts_cvars.patch_full[int1d(color)], parts_cvars.patch_int[int1d(color)].ispace)
+                solver.setCoarsenFlagsLeaf(patches_meta[int1d(color)], parts_cvars.patch_full[int1d(color)], parts_cvars.patch_int[int1d(color)].ispace, params)
             end
         end
         grid.coarsenInit(rgn_patches_meta, patches_meta)
@@ -1204,7 +1207,7 @@ task solver.main()
     -- TODO: Set coordinate on refined mesh
     -- TODO: Redo setInitialCondition on refined mesh
 
-    solver.adjustMesh(rgn_patches_meta, rgn_patches_grid, rgn_patches_cvars_0, patches_meta, patches_grid_int, parts_cvars_0);
+    solver.adjustMesh(rgn_patches_meta, rgn_patches_grid, rgn_patches_cvars_0, patches_meta, patches_grid_int, parts_cvars_0, params);
     dumpDensity("./data/density_000000.dat", grid.level_max, rgn_patches_cvars_0, rgn_patches_grid, rgn_patches_meta, patches_cvars_0_int, patches_grid_int);
     writeActiveMeta("./data/mesh_000000.dat", rgn_patches_meta, patches_meta);
     --
@@ -1253,7 +1256,7 @@ task solver.main()
             writeActiveMeta(filename_msh, rgn_patches_meta, patches_meta);
         end
         -- c.free(filename); -- should not free until dumpDensity finishes
-        solver.adjustMesh(rgn_patches_meta, rgn_patches_grid, rgn_patches_cvars_0, patches_meta, patches_grid_int, parts_cvars_0);
+        solver.adjustMesh(rgn_patches_meta, rgn_patches_grid, rgn_patches_cvars_0, patches_meta, patches_grid_int, parts_cvars_0, params);
     end
 
 end
