@@ -16,9 +16,9 @@ base_patch_length = 0.6 / num_patches
 
 
 def main():
-    tid_list = np.arange(1, 3000, 4)
-    # ./compile_pde_local_upsample.sh
-    # mpirun build/test_pde_local_upsample 504 0.05 4 -ll:util 10 -ll:cpu 10
+    tid_list = [0] + np.arange(1, 3000, 4)
+    # ./compile_riemann_local_upsample.sh
+    # mpirun build/test_riemann_local_upsample 1400 0.001 4 0.85 5 0.5 20
     for i in range(len(tid_list)):
         tid = tid_list[i]
         dat_filename = dat_filename_fmt.format(tid)

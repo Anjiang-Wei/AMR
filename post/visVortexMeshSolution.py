@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 
 dat_filename_fmt = "../src/data/density_{:06}.dat"
 msh_filename_fmt = "../src/data/mesh_{:06d}.dat"
-fig_filename_fmt = "../figures2/fig_{:06d}.png"
+fig_filename_fmt = "../figures/fig_{:06d}.png"
 
 domain_offset_x   = -6.0
 domain_offset_y   = -6.0
@@ -16,7 +16,7 @@ base_patch_length = 12.0 / num_patches
 
 
 def main():
-    tid_list = np.arange(0, 3000, 1)
+    tid_list = [0] + np.arange(1, 3000, 4)
     # ./compile_pde_local_upsample.sh
     # mpirun build/test_pde_local_upsample 504 0.05 4 -ll:util 10 -ll:cpu 10
     for i in range(len(tid_list)):
