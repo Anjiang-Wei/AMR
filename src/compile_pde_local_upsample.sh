@@ -8,6 +8,13 @@ SRC_FILE=$CWD/$TARGET.rg
 DATA_DIR=$CWD/data
 
 
+INPUT_FILE=$CWD/input_vortex.rg
+
+if [ -f $CWD/input.rg ]; then
+    rm $CWD/input.rg
+fi
+ln -s $INPUT_FILE $CWD/input.rg
+
 if [ ! -f $SRC_FILE ]; then
     echo "[ERROR] Cannot find \"$SRC_FILE\"."
     exit
