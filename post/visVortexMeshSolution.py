@@ -77,7 +77,7 @@ def generateVisData(data_file, cmap='gnuplot2_r', vmin=None, vmax=None, rasteriz
 
     level_max = int(np.max(levels) + 1.1)
     # Which levels to visualize
-    level_list = np.arange(0, 1)
+    level_list = np.arange(0, 3)
     for l in level_list:
         pid_level = np.where(np.int32(levels) == l)[0]
         for pid in pid_level:
