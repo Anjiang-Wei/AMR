@@ -95,7 +95,54 @@ def setInitialCondition(cvars : ConsVars, x, y):
     cvars.mmty[:] = rho * v
     cvars.enrg[:] = rho * (Rg * T / (gamma - 1.0) + 0.5 * (u * u + v * v))
 
+def characteristicToConservative(ch0, ch1, ch2, ch3, c_avg, u_avg, v_avg, h_avg, g, l):
+    '''
+    Convert characteristic variables to conservative variables
+    '''
+    Ug = u_avg * g[0] + v_avg * g[1]
+    Ul = u_avg * l[0] + v_avg * l[1]
+    ek_avg = 0.5 * (u_avg * u_avg + v_avg * v_avg)
+    U0 = ch0 + ch2 + ch3
+    U1 = ch0 * (u_avg - c_avg * g[0]) + ch1 * l[0] + ch2 * u_avg + ch3 * (u_avg + c_avg * g[0])
+    U2 = ch0 * (v_avg - c_avg * g[1]) + ch1 * l[1] + ch2 * v_avg + ch3 * (v_avg + c_avg * g[1])
+    U3 = ch0 * (h_avg - c_avg * Ug) + ch1 * Ul + ch2 * ek_avg + ch3 * (h_avg + c_avg * Ug)
+    return U0, U1, U2, U3
 
+    
+def conservativeToCharacteristic(U0, U1, U2, U3, c_avg, u_avg, v_avg, g, l):
+    '''
+    Convert conservative variables to characteristic variables
+    '''
+    rho = U0
+    u   = U1 / U0
+    v   = U2 / U0
+    T   = (U3 / U0 - 0.5 * (u * u + v * v)) * (gamma - 1.0) / Rg
+    c   = np.sqrt(gamma * Rg * T)
+
+
+    ek_avg = 0.5 * (u_avg * u_avg + v_avg * v_avg)
+    gm1byc2 = 0.5 * (gamma - 1.0) / (c_avg * c_avg)
+    Ug = u_avg * g[0] + v_avg * g[1]
+    Ul = u_avg * l[0] + v_avg * l[1]
+
+    ch0 = U0 * (gm1byc2 * ek_avg + 0.5 * Ug / c_avg) \
+        - U1 * (0.5 * g[0] / c_avg - gm1byc2 * u_avg) \
+        - U2 * (0.5 * g[1] / c_avg - gm1byc2 * v_avg) \
+        + U3 * gm1byc2
+
+    ch1 = -U0 * Ul + U1 * l[0] + U2 * l[1]
+
+    ch2 = U0 * (1.0 - 2.0 * gm1byc2 * ek_avg) \
+        + U1 * (2.0 * gm1byc2 * u_avg) \
+        + U2 * (2.0 * gm1byc2 * v_avg) \
+        - 2.0 * U3 * gm1byc2
+
+    ch3 = U0 * (gm1byc2 * ek_avg - 0.5 * Ug / c_avg) \
+        - U1 * (0.5 * g[0] / c_avg + gm1byc2 * u_avg) \
+        - U2 * (0.5 * g[1] / c_avg + gm1byc2 * v_avg) \
+        + U3 * gm1byc2
+    
+    return ch0, ch1, ch2, ch3
 
 def SSPRK3(cvars_0 : ConsVars, cvars_1 : ConsVars, cvars_2 : ConsVars, dx : float, dy : float, dt : float):
     calcRHS(cvars_1, cvars_0, dx, dy)
@@ -214,7 +261,64 @@ def interpY(f):
     jp2 = (jm1 + 2) % N
     return (9.0 / 16.0) * (f[:, jp1] + f[:, jm1]) - (1.0 / 16.0) * (f[:, jp2] + f[:, jm2])
 
+def weno5ZInterp(fm2, fm1, f00, fp1, fp2):
+    '''
+    5th-order WENO5-Z interpolation scheme.
+    For more detail see Jiang & Shu, JCP (1996).
+    Note: The coefficients used are based on interpolation not reconstruction.
+    '''
+    d0 = 0.0625  # linear weights of S0
+    d1 = 0.6250  # linear weights of S1
+    d2 = 0.3125  # linear weights of S2
 
+    fs0 =  0.375 * fm2 - 1.250 * fm1 + 1.875 * f00
+    fs1 = -0.125 * fm1 + 0.750 * f00 + 0.375 * fp1
+    fs2 =  0.375 * f00 + 0.750 * fp1 - 0.125 * fp2
+
+    # smoothness indicator: Eq(2.17)
+    tmp1 = fm2 - 2.0 * fm1 +       f00
+    tmp2 = fm2 - 4.0 * fm1 + 3.0 * f00
+    beta0 = (13.0 / 12.0) * tmp1 * tmp1 + 0.25 * tmp2 * tmp2
+
+    tmp1 = fm1 - 2.0 * f00 + fp1
+    tmp2 = fm1             - fp1
+    beta1 = (13.0 / 12.0) * tmp1 * tmp1 + 0.25 * tmp2 * tmp2
+
+    tmp1 =       f00 - 2.0 * fp1 + fp2
+    tmp2 = 3.0 * f00 - 4.0 * fp1 + fp2
+    beta2 = (13.0 / 12.0) * tmp1 * tmp1 + 0.25 * tmp2 * tmp2
+
+    tmp1 = (beta0 - beta2) * (beta0 - beta2)  # tau^2
+    eps = 1.0e-6
+    beta0 = d0 * (1.0 + tmp1 / (beta0 + eps))
+    beta1 = d1 * (1.0 + tmp1 / (beta1 + eps))
+    beta2 = d2 * (1.0 + tmp1 / (beta2 + eps))
+
+    return (beta0 * fs0 + beta1 * fs1 + beta2 * fs2) / (beta0 + beta1 + beta2)
+
+def weno5JSInterp(fm2, fm1, f00, fp1, fp2):
+    '''
+    5th-order WENO5-Z interpolation scheme.
+    For more detail see Jiang & Shu, JCP (1996).
+    Note: The coefficients used are based on interpolation not reconstruction.
+    '''
+    q0 = 0.375 * fm2 - 1.250 * fm1 + 1.875 * f00
+    q1 = -0.125 * fm1 + 0.750 * f00 + 0.375 * fp1
+    q2 = 0.375 * f00 + 0.750 * fp1 - 0.125 * fp2
+    d20 = fm2 - 2.0 * fm1 + f00
+    d21 = fm1 - 2.0 * f00 + fp1
+    d22 = f00 - 2.0 * fp1 + fp2
+    d10 = fm2 - 4.0 * fm1 + 3.0 * f00
+    d11 = fm1 - fp1
+    d12 = fp2 - 4.0 * fp1 + 3.0 * f00
+    IS0 = (13.0 / 12.0) * d20 * d20 + 0.25 * d10 * d10 + 1e-6
+    IS1 = (13.0 / 12.0) * d21 * d21 + 0.25 * d11 * d11 + 1e-6
+    IS2 = (13.0 / 12.0) * d22 * d22 + 0.25 * d12 * d12 + 1e-6
+    tau2 = (IS0 - IS2) * (IS0 - IS2)
+    a0 = 0.0625 * (1.0 + tau2 / (IS0 * IS0))
+    a1 = 0.6250 * (1.0 + tau2 / (IS1 * IS1))
+    a2 = 0.3125 * (1.0 + tau2 / (IS2 * IS2))
+    return (a0 * q0 + a1 * q1 + a2 * q2) / (a0 + a1 + a2 + 1e-32)
 
 
 if __name__ == "__main__":
