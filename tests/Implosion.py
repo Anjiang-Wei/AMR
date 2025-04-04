@@ -1,8 +1,6 @@
-####
-## UNCOMMENT THIS WHILE RUNNING ON LINUX BASED CLUSTER
-# import matplotlib
-# matplotlib.use("agg")
-####
+import matplotlib
+matplotlib.use("agg")
+import os
 import numpy as np
 import matplotlib.pyplot as plt
 import h5py
@@ -443,6 +441,11 @@ def weno5JSInterp(fm2, fm1, f00, fp1, fp2):
     a2 = 0.3125 * (1.0 + tau2 / (IS2 * IS2))
     return (a0 * q0 + a1 * q1 + a2 * q2) / (a0 + a1 + a2 + 1e-32)
 
+def create_output_dir():
+    # ./ImplosionData/ and ./ImplosionFigs/
+    os.makedirs("ImplosionData/", exist_ok=True)
+    os.makedirs("ImplosionFigs/", exist_ok=True)
 
 if __name__ == "__main__":
+    create_output_dir()
     main()
