@@ -9,39 +9,47 @@ import h5py
 from numba import jit, float64, int16, int32
 from numba.experimental import jitclass
 
-dt = 0.001
-nsteps = 2000
-fig_output_stride = 100
+t_final = 1.0
+CFL = 0.10
+dt_output = 1e-3
 fig_name_fmt = "./ImplosionFigs/vis_implosion_{:06d}.pdf"
 dat_name_fmt = "./ImplosionData/dat_implosion_{:06d}.h5"
 
 Rg    = 1.0
 gamma = 1.4
-L     = 12.0
-N     = 128
+L     = 0.6
+N     = 256
 
 def main():
     cvars_0 = ConsVars(N)
     cvars_1 = ConsVars(N)
     cvars_2 = ConsVars(N)
 
-    x1d = np.linspace(-0.5 * L, 0.5 * L, num=N, endpoint=False)
-    y1d = np.linspace(-0.5 * L, 0.5 * L, num=N, endpoint=False)
-    x, y = np.meshgrid(x1d, y1d, indexing='ij')
     dx = float(L) / N
     dy = float(L) / N
+    x1d = np.linspace(-0.5 * L, 0.5 * L, num=N, endpoint=False) + 0.5 * dx
+    y1d = np.linspace(-0.5 * L, 0.5 * L, num=N, endpoint=False) + 0.5 * dy
+    x, y = np.meshgrid(x1d, y1d, indexing='ij')
 
     setInitialCondition(cvars_0, x, y)
     fig_count = 0
     visualizeSolution(cvars_0.mass, fig_name_fmt.format(fig_count))
     saveSolution(cvars_0.convertToPrim(), ['rho', 'u', 'v', 'T', 'p'], dat_name_fmt.format(fig_count))
-    for tid in range(nsteps):
+    t = 0.0
+    while (t < (t_final - 1e-14)):
+        t_output = dt_output * (1 + fig_count)
+        dt = min(t_final - t, t_output - t)
+        _, u, v, T, p = cvars_0.convertToPrim()
+        c = np.sqrt(gamma * Rg * T)
+        U = max(np.max(np.abs(u) + c), np.max(np.abs(v) + c))
+        dt = min(dt, CFL * dx / U)
         SSPRK3Riemann(cvars_0, cvars_1, cvars_2, dx, dy, dt)
-        if (((tid + 1) % fig_output_stride) == 0):
+        if (np.abs(t_output - dt - t) < 1e-14):
             fig_count += 1
             visualizeSolution(cvars_0.mass, fig_name_fmt.format(fig_count))
             saveSolution(cvars_0.convertToPrim(), ['rho', 'u', 'v', 'T', 'p'], dat_name_fmt.format(fig_count))
-        print("Completed {:4d}/{:4d}, {:.2f}%.".format(tid+1, nsteps, 100.0*(tid+1)/nsteps))
+        t += dt
+        print("Completed {:.2f}%, dt = {:12.5e}, t = {:12.5e}.".format(100.0 * t / t_final, dt, t))
     
 
 
@@ -71,7 +79,7 @@ class ConsVars:
         return [self.mass, self.mmtx, self.mmty, self.enrg]
 
     def convertToPrim(self):
-        rho = self.mass
+        rho = np.copy(self.mass)
         u   = self.mmtx / self.mass
         v   = self.mmty / self.mass
         T   = (self.enrg / self.mass - 0.5 * (u * u + v * v)) * (gamma - 1.0) / Rg
@@ -81,7 +89,7 @@ class ConsVars:
 
 @jit(nopython=True)
 def conservativeToPrimitive(mass, mmtx, mmty, enrg, gamma, Rg):
-        rho = mass
+        rho = np.copy(mass)
         u   = mmtx / mass
         v   = mmty / mass
         T   = (enrg / mass - 0.5 * (u * u + v * v)) * (gamma - 1.0) / Rg
@@ -90,25 +98,22 @@ def conservativeToPrimitive(mass, mmtx, mmty, enrg, gamma, Rg):
 
 
 def setInitialCondition(cvars : ConsVars, x, y):
-    alp  = 1.20
-    eps  = 0.30
-    U0   = 0.50
-    V0   = 0.00
-    r    = np.sqrt(x * x + y * y)
-    G    = np.exp(alp * (1.0 - r * r))
-    T0   = 1.0 / (gamma * Rg)
-    AT   = (gamma - 1.0) * eps * eps / (4.0 * alp * gamma)
-    isen = 1.0 / (gamma - 1.0)
-
-    u   = U0 + r * eps * G * ( y / (r + ((r * r) < 1e-30)))
-    v   = V0 + r * eps * G * (-x / (r + ((r * r) < 1e-30)))
-    T   = T0 - AT * G * G
-    rho = (1.0 - AT*G*G/T0) ** isen
+    rho = np.ones(x.shape, dtype=np.float64)
+    p   = np.ones(x.shape, dtype=np.float64)
+    flag = (np.abs(x) + np.abs(y)) / L
+    idx1 = np.where(flag <  0.25)
+    idx2 = np.where(flag >= 0.25)
+    #idx1 = np.where(y <  0.0)
+    #idx2 = np.where(y >= 0.0)
+    rho[idx1] = 0.125
+    rho[idx2] = 1.000
+    p  [idx1] = 0.140
+    p  [idx2] = 1.000
 
     cvars.mass[:] = rho
-    cvars.mmtx[:] = rho * u
-    cvars.mmty[:] = rho * v
-    cvars.enrg[:] = rho * (Rg * T / (gamma - 1.0) + 0.5 * (u * u + v * v))
+    cvars.mmtx[:] = 0.0
+    cvars.mmty[:] = 0.0
+    cvars.enrg[:] = p / (gamma - 1.0)
 
 
 @jit(nopython=True)
@@ -198,20 +203,14 @@ def conservativeToCharacteristic(U0, U1, U2, U3, c_avg, u_avg, v_avg, g, l):
     g                  -- 2D unit normal vector
     l                  -- 2D unit tangential vector
     '''
-    rho = U0
-    u   = U1 / U0
-    v   = U2 / U0
-    T   = (U3 / U0 - 0.5 * (u * u + v * v)) * (gamma - 1.0) / Rg
-    c   = (gamma * Rg * T) ** 0.5
-
     ek_avg = 0.5 * (u_avg * u_avg + v_avg * v_avg)
     gm1byc2 = 0.5 * (gamma - 1.0) / (c_avg * c_avg)
     Ug = u_avg * g[0] + v_avg * g[1]
     Ul = u_avg * l[0] + v_avg * l[1]
 
     ch0 = U0 * (gm1byc2 * ek_avg + 0.5 * Ug / c_avg) \
-        - U1 * (0.5 * g[0] / c_avg - gm1byc2 * u_avg) \
-        - U2 * (0.5 * g[1] / c_avg - gm1byc2 * v_avg) \
+        - U1 * (0.5 * g[0] / c_avg + gm1byc2 * u_avg) \
+        - U2 * (0.5 * g[1] / c_avg + gm1byc2 * v_avg) \
         + U3 * gm1byc2
 
     ch1 = -U0 * Ul + U1 * l[0] + U2 * l[1]
@@ -222,8 +221,8 @@ def conservativeToCharacteristic(U0, U1, U2, U3, c_avg, u_avg, v_avg, g, l):
         - 2.0 * U3 * gm1byc2
 
     ch3 = U0 * (gm1byc2 * ek_avg - 0.5 * Ug / c_avg) \
-        - U1 * (0.5 * g[0] / c_avg + gm1byc2 * u_avg) \
-        - U2 * (0.5 * g[1] / c_avg + gm1byc2 * v_avg) \
+        + U1 * (0.5 * g[0] / c_avg - gm1byc2 * u_avg) \
+        + U2 * (0.5 * g[1] / c_avg - gm1byc2 * v_avg) \
         + U3 * gm1byc2
     
     return ch0, ch1, ch2, ch3
@@ -258,30 +257,58 @@ def calcRHSRiemann(cvars_ddt, cvars_now, dx : float, dy : float):
             ch2 = np.empty((6,), dtype=np.float64)
             ch3 = np.empty((6,), dtype=np.float64)
 
-            for m in range(6):
-                im = i - 3 + m
-                ch0[m], ch1[m], ch2[m], ch3[m] = conservativeToCharacteristic( \
-                        U0[im, j], U1[im, j], U2[im, j], U3[im, j], \
-                        c_avg, u_avg, v_avg, [1.0, 0.0], [0.0, 1.0])
+            im = (i - 3 + N) % N
+            ch0[0], ch1[0], ch2[0], ch3[0] = conservativeToCharacteristic( \
+                    U0[im, j], U1[im, j], U2[im, j], U3[im, j], \
+                    c_avg, u_avg, v_avg, [1.0, 0.0], [0.0, 1.0])
+            im = (i - 2 + N) % N
+            ch0[1], ch1[1], ch2[1], ch3[1] = conservativeToCharacteristic( \
+                    U0[im, j], U1[im, j], U2[im, j], U3[im, j], \
+                    c_avg, u_avg, v_avg, [1.0, 0.0], [0.0, 1.0])
+            im = (i - 1 + N) % N
+            ch0[2], ch1[2], ch2[2], ch3[2] = conservativeToCharacteristic( \
+                    U0[im, j], U1[im, j], U2[im, j], U3[im, j], \
+                    c_avg, u_avg, v_avg, [1.0, 0.0], [0.0, 1.0])
+            im = i
+            ch0[3], ch1[3], ch2[3], ch3[3] = conservativeToCharacteristic( \
+                    U0[im, j], U1[im, j], U2[im, j], U3[im, j], \
+                    c_avg, u_avg, v_avg, [1.0, 0.0], [0.0, 1.0])
+            im = (i + 1) % N
+            ch0[4], ch1[4], ch2[4], ch3[4] = conservativeToCharacteristic( \
+                    U0[im, j], U1[im, j], U2[im, j], U3[im, j], \
+                    c_avg, u_avg, v_avg, [1.0, 0.0], [0.0, 1.0])
+            im = (i + 2) % N
+            ch0[5], ch1[5], ch2[5], ch3[5] = conservativeToCharacteristic( \
+                    U0[im, j], U1[im, j], U2[im, j], U3[im, j], \
+                    c_avg, u_avg, v_avg, [1.0, 0.0], [0.0, 1.0])
+
 
             UL = np.empty((4,), dtype=np.float64)
             UR = np.empty((4,), dtype=np.float64)
 
-            ch0I = weno5ZInterp(ch0[0], ch0[1], ch0[2], ch0[3], ch0[4])
-            ch1I = weno5ZInterp(ch1[0], ch1[1], ch1[2], ch1[3], ch1[4])
-            ch2I = weno5ZInterp(ch2[0], ch2[1], ch2[2], ch2[3], ch2[4])
-            ch3I = weno5ZInterp(ch3[0], ch3[1], ch3[2], ch3[3], ch3[4])
+            ch0I = weno5JSInterp(ch0[0], ch0[1], ch0[2], ch0[3], ch0[4])
+            ch1I = weno5JSInterp(ch1[0], ch1[1], ch1[2], ch1[3], ch1[4])
+            ch2I = weno5JSInterp(ch2[0], ch2[1], ch2[2], ch2[3], ch2[4])
+            ch3I = weno5JSInterp(ch3[0], ch3[1], ch3[2], ch3[3], ch3[4])
             UL[0], UL[1], UL[2], UL[3] = characteristicToConservative( \
                     ch0I, ch1I, ch2I, ch3I, c_avg, u_avg, v_avg, h_avg, [1.0, 0.0], [0.0, 1.0])
 
-            ch0I = weno5ZInterp(ch0[5], ch0[4], ch0[3], ch0[2], ch0[1])
-            ch1I = weno5ZInterp(ch1[5], ch1[4], ch1[3], ch1[2], ch1[1])
-            ch2I = weno5ZInterp(ch2[5], ch2[4], ch2[3], ch2[2], ch2[1])
-            ch3I = weno5ZInterp(ch3[5], ch3[4], ch3[3], ch3[2], ch3[1])
+            ch0I = weno5JSInterp(ch0[5], ch0[4], ch0[3], ch0[2], ch0[1])
+            ch1I = weno5JSInterp(ch1[5], ch1[4], ch1[3], ch1[2], ch1[1])
+            ch2I = weno5JSInterp(ch2[5], ch2[4], ch2[3], ch2[2], ch2[1])
+            ch3I = weno5JSInterp(ch3[5], ch3[4], ch3[3], ch3[2], ch3[1])
             UR[0], UR[1], UR[2], UR[3] = characteristicToConservative( \
                     ch0I, ch1I, ch2I, ch3I, c_avg, u_avg, v_avg, h_avg, [1.0, 0.0], [0.0, 1.0])
 
-            S = np.float64(max(abs(u[i-1, j]), abs(u[i, j]))) + c_avg
+            uL = UL[1] / UL[0]
+            vL = UL[2] / UL[0]
+            eL = UL[3] / UL[0] - 0.5 * (uL * uL + vL * vL)
+            uR = UR[1] / UR[0]
+            vR = UR[2] / UR[0]
+            eR = UR[3] / UR[0] - 0.5 * (uR * uR + vR * vR)
+            cL = np.sqrt(gamma * eL * (gamma - 1.0))
+            cR = np.sqrt(gamma * eR * (gamma - 1.0))
+            S = max(abs(uL) + cL, abs(uR) + cR)
             F0[i,j], F1[i,j], F2[i,j], F3[i,j] = riemannFluxes(UL, UR, S, [1.0, 0.0])
 
     cvars_ddt[0][:] = ddxStag(F0, -1.0/dx)
@@ -301,30 +328,58 @@ def calcRHSRiemann(cvars_ddt, cvars_now, dx : float, dy : float):
             ch2 = np.empty((6,), dtype=np.float64)
             ch3 = np.empty((6,), dtype=np.float64)
 
-            for m in range(6):
-                jm = j - 3 + m
-                ch0[m], ch1[m], ch2[m], ch3[m] = conservativeToCharacteristic( \
-                        U0[i, jm], U1[i, jm], U2[i, jm], U3[i, jm], \
-                        c_avg, u_avg, v_avg, [0.0, 1.0], [1.0, 0.0])
+            jm = (j - 3 + N) % N
+            ch0[0], ch1[0], ch2[0], ch3[0] = conservativeToCharacteristic( \
+                    U0[i, jm], U1[i, jm], U2[i, jm], U3[i, jm], \
+                    c_avg, u_avg, v_avg, [0.0, 1.0], [1.0, 0.0])
+            jm = (j - 2 + N) % N
+            ch0[1], ch1[1], ch2[1], ch3[1] = conservativeToCharacteristic( \
+                    U0[i, jm], U1[i, jm], U2[i, jm], U3[i, jm], \
+                    c_avg, u_avg, v_avg, [0.0, 1.0], [1.0, 0.0])
+            jm = (j - 1 + N) % N
+            ch0[2], ch1[2], ch2[2], ch3[2] = conservativeToCharacteristic( \
+                    U0[i, jm], U1[i, jm], U2[i, jm], U3[i, jm], \
+                    c_avg, u_avg, v_avg, [0.0, 1.0], [1.0, 0.0])
+            jm = j
+            ch0[3], ch1[3], ch2[3], ch3[3] = conservativeToCharacteristic( \
+                    U0[i, jm], U1[i, jm], U2[i, jm], U3[i, jm], \
+                    c_avg, u_avg, v_avg, [0.0, 1.0], [1.0, 0.0])
+            jm = (j + 1) % N
+            ch0[4], ch1[4], ch2[4], ch3[4] = conservativeToCharacteristic( \
+                    U0[i, jm], U1[i, jm], U2[i, jm], U3[i, jm], \
+                    c_avg, u_avg, v_avg, [0.0, 1.0], [1.0, 0.0])
+            jm = (j + 2) % N
+            ch0[5], ch1[5], ch2[5], ch3[5] = conservativeToCharacteristic( \
+                    U0[i, jm], U1[i, jm], U2[i, jm], U3[i, jm], \
+                    c_avg, u_avg, v_avg, [0.0, 1.0], [1.0, 0.0])
+
 
             UL = np.empty((4,), dtype=np.float64)
             UR = np.empty((4,), dtype=np.float64)
 
-            ch0I = weno5ZInterp(ch0[0], ch0[1], ch0[2], ch0[3], ch0[4])
-            ch1I = weno5ZInterp(ch1[0], ch1[1], ch1[2], ch1[3], ch1[4])
-            ch2I = weno5ZInterp(ch2[0], ch2[1], ch2[2], ch2[3], ch2[4])
-            ch3I = weno5ZInterp(ch3[0], ch3[1], ch3[2], ch3[3], ch3[4])
+            ch0I = weno5JSInterp(ch0[0], ch0[1], ch0[2], ch0[3], ch0[4])
+            ch1I = weno5JSInterp(ch1[0], ch1[1], ch1[2], ch1[3], ch1[4])
+            ch2I = weno5JSInterp(ch2[0], ch2[1], ch2[2], ch2[3], ch2[4])
+            ch3I = weno5JSInterp(ch3[0], ch3[1], ch3[2], ch3[3], ch3[4])
             UL[0], UL[1], UL[2], UL[3] = characteristicToConservative( \
                     ch0I, ch1I, ch2I, ch3I, c_avg, u_avg, v_avg, h_avg, [0.0, 1.0], [1.0, 0.0])
 
-            ch0I = weno5ZInterp(ch0[5], ch0[4], ch0[3], ch0[2], ch0[1])
-            ch1I = weno5ZInterp(ch1[5], ch1[4], ch1[3], ch1[2], ch1[1])
-            ch2I = weno5ZInterp(ch2[5], ch2[4], ch2[3], ch2[2], ch2[1])
-            ch3I = weno5ZInterp(ch3[5], ch3[4], ch3[3], ch3[2], ch3[1])
+            ch0I = weno5JSInterp(ch0[5], ch0[4], ch0[3], ch0[2], ch0[1])
+            ch1I = weno5JSInterp(ch1[5], ch1[4], ch1[3], ch1[2], ch1[1])
+            ch2I = weno5JSInterp(ch2[5], ch2[4], ch2[3], ch2[2], ch2[1])
+            ch3I = weno5JSInterp(ch3[5], ch3[4], ch3[3], ch3[2], ch3[1])
             UR[0], UR[1], UR[2], UR[3] = characteristicToConservative( \
                     ch0I, ch1I, ch2I, ch3I, c_avg, u_avg, v_avg, h_avg, [0.0, 1.0], [1.0, 0.0])
 
-            S = np.float64(max(abs(u[i, j-1]), abs(u[i, j]))) + c_avg
+            uL = UL[1] / UL[0]
+            vL = UL[2] / UL[0]
+            eL = UL[3] / UL[0] - 0.5 * (uL * uL + vL * vL)
+            uR = UR[1] / UR[0]
+            vR = UR[2] / UR[0]
+            eR = UR[3] / UR[0] - 0.5 * (uR * uR + vR * vR)
+            cL = np.sqrt(gamma * eL * (gamma - 1.0))
+            cR = np.sqrt(gamma * eR * (gamma - 1.0))
+            S = max(abs(vL) + cL, abs(vR) + cR)
             F0[i,j], F1[i,j], F2[i,j], F3[i,j] = riemannFluxes(UL, UR, S, [0.0, 1.0])
 
     cvars_ddt[0][:] += ddyStag(F0, -1.0/dy)
@@ -343,10 +398,10 @@ def SSPRK3Riemann(cvars_0 : ConsVars, cvars_1 : ConsVars, cvars_2 : ConsVars, dx
     cvars_1.enrg[:] = cvars_0.enrg + (dt * cvars_1.enrg)
 
     calcRHSRiemann(cvars_2.get(), cvars_1.get(), dx, dy)
-    cvars_2.mass[:] = (0.75 * cvars_0.mass) + (0.25 * cvars_1.mass) + (0.25 * dt * cvars_1.mass)
-    cvars_2.mmtx[:] = (0.75 * cvars_0.mmtx) + (0.25 * cvars_1.mmtx) + (0.25 * dt * cvars_1.mmtx)
-    cvars_2.mmty[:] = (0.75 * cvars_0.mmty) + (0.25 * cvars_1.mmty) + (0.25 * dt * cvars_1.mmty)
-    cvars_2.enrg[:] = (0.75 * cvars_0.enrg) + (0.25 * cvars_1.enrg) + (0.25 * dt * cvars_1.enrg)
+    cvars_2.mass[:] = (0.75 * cvars_0.mass) + (0.25 * cvars_1.mass) + (0.25 * dt * cvars_2.mass)
+    cvars_2.mmtx[:] = (0.75 * cvars_0.mmtx) + (0.25 * cvars_1.mmtx) + (0.25 * dt * cvars_2.mmtx)
+    cvars_2.mmty[:] = (0.75 * cvars_0.mmty) + (0.25 * cvars_1.mmty) + (0.25 * dt * cvars_2.mmty)
+    cvars_2.enrg[:] = (0.75 * cvars_0.enrg) + (0.25 * cvars_1.enrg) + (0.25 * dt * cvars_2.enrg)
 
     calcRHSRiemann(cvars_1.get(), cvars_2.get(), dx, dy)
     cvars_0.mass[:] = ((1.0/3.0) * cvars_0.mass) + ((2.0/3.0) * cvars_2.mass) + ((2.0/3.0) * dt * cvars_1.mass)
@@ -363,10 +418,13 @@ def ddxStag(f, inv_dx : float):
     '''
     N = f.shape[0]
     im1 = np.arange(N)
+    ip3 = (im1 + 3) % N
     ip2 = (im1 + 2) % N
     ip1 = (im1 + 1) % N
     im2 = (im1 - 1 + N) % N
-    return inv_dx * ( (9.0/8.0) * (f[ip1, :] - f[im1, :]) - (1.0/24.0) * (f[ip2, :] - f[im2, :]))
+    im3 = (im1 - 2 + N) % N
+    #return inv_dx * ( (9.0/8.0) * (f[ip1, :] - f[im1, :]) - (1.0/24.0) * (f[ip2, :] - f[im2, :]))
+    return inv_dx * ( (75.0/64.0) * (f[ip1, :] - f[im1, :]) - (25.0/384.0) * (f[ip2, :] - f[im2, :]) + (3.0/640.0) * (f[ip3, :] - f[im3, :]))
 
 
 @jit(nopython=True)
@@ -376,10 +434,13 @@ def ddyStag(f, inv_dy : float):
     '''
     N = f.shape[1]
     jm1 = np.arange(N)
+    jp3 = (jm1 + 3) % N
     jp2 = (jm1 + 2) % N
     jp1 = (jm1 + 1) % N
     jm2 = (jm1 - 1 + N) % N
-    return inv_dy * ( (9.0/8.0) * (f[:, jp1] - f[:, jm1]) - (1.0/24.0) * (f[:, jp2] - f[:, jm2]))
+    jm3 = (jm1 - 2 + N) % N
+    #return inv_dy * ( (9.0/8.0) * (f[:, jp1] - f[:, jm1]) - (1.0/24.0) * (f[:, jp2] - f[:, jm2]))
+    return inv_dy * ( (75.0/64.0) * (f[:, jp1] - f[:, jm1]) - (25.0/384.0) * (f[:, jp2] - f[:, jm2]) + (3.0/460.0) * (f[:, jp3] - f[:, jm3]))
 
 @jit(nopython=True)
 def weno5ZInterp(fm2, fm1, f00, fp1, fp2):
@@ -411,9 +472,9 @@ def weno5ZInterp(fm2, fm1, f00, fp1, fp2):
 
     tmp1 = (beta0 - beta2) * (beta0 - beta2)  # tau^2
     eps = 1.0e-6
-    beta0 = d0 * (1.0 + tmp1 / (beta0 + eps))
-    beta1 = d1 * (1.0 + tmp1 / (beta1 + eps))
-    beta2 = d2 * (1.0 + tmp1 / (beta2 + eps))
+    beta0 = d0 * (1.0 + tmp1 / (beta0 * beta0 + eps))
+    beta1 = d1 * (1.0 + tmp1 / (beta1 * beta1 + eps))
+    beta2 = d2 * (1.0 + tmp1 / (beta2 * beta2 + eps))
 
     return (beta0 * fs0 + beta1 * fs1 + beta2 * fs2) / (beta0 + beta1 + beta2)
 
@@ -425,23 +486,23 @@ def weno5JSInterp(fm2, fm1, f00, fp1, fp2):
     For more detail see Jiang & Shu, JCP (1996).
     Note: The coefficients used are based on interpolation not reconstruction.
     '''
-    q0 = 0.375 * fm2 - 1.250 * fm1 + 1.875 * f00
+    q0 =  0.375 * fm2 - 1.250 * fm1 + 1.875 * f00
     q1 = -0.125 * fm1 + 0.750 * f00 + 0.375 * fp1
-    q2 = 0.375 * f00 + 0.750 * fp1 - 0.125 * fp2
+    q2 =  0.375 * f00 + 0.750 * fp1 - 0.125 * fp2
     d20 = fm2 - 2.0 * fm1 + f00
     d21 = fm1 - 2.0 * f00 + fp1
     d22 = f00 - 2.0 * fp1 + fp2
     d10 = fm2 - 4.0 * fm1 + 3.0 * f00
     d11 = fm1 - fp1
     d12 = fp2 - 4.0 * fp1 + 3.0 * f00
-    IS0 = (13.0 / 12.0) * d20 * d20 + 0.25 * d10 * d10 + 1e-6
-    IS1 = (13.0 / 12.0) * d21 * d21 + 0.25 * d11 * d11 + 1e-6
-    IS2 = (13.0 / 12.0) * d22 * d22 + 0.25 * d12 * d12 + 1e-6
+    IS0 = (13.0 / 12.0) * d20 * d20 + 0.25 * d10 * d10
+    IS1 = (13.0 / 12.0) * d21 * d21 + 0.25 * d11 * d11
+    IS2 = (13.0 / 12.0) * d22 * d22 + 0.25 * d12 * d12
     tau2 = (IS0 - IS2) * (IS0 - IS2)
-    a0 = 0.0625 * (1.0 + tau2 / (IS0 * IS0))
-    a1 = 0.6250 * (1.0 + tau2 / (IS1 * IS1))
-    a2 = 0.3125 * (1.0 + tau2 / (IS2 * IS2))
-    return (a0 * q0 + a1 * q1 + a2 * q2) / (a0 + a1 + a2 + 1e-32)
+    a0 = 0.0625 * (1.0 / (IS0 * IS0 + 1e-6))
+    a1 = 0.6250 * (1.0 / (IS1 * IS1 + 1e-6))
+    a2 = 0.3125 * (1.0 / (IS2 * IS2 + 1e-6))
+    return (a0 * q0 + a1 * q1 + a2 * q2) / (a0 + a1 + a2)
 
 
 if __name__ == "__main__":
