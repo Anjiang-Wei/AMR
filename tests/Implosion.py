@@ -16,7 +16,7 @@ dat_name_fmt = "./ImplosionData/dat_implosion_{:06d}.h5"
 Rg    = 1.0
 gamma = 1.4
 L     = 0.6
-N     = 256
+N     = 1024
 
 def main():
     cvars_0 = ConsVars(N)
