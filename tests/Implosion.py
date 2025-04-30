@@ -4,11 +4,11 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 import h5py
-from numba import jit, float64, int16, int32
+from numba import jit, float64, int16, int32, prange
 from numba.experimental import jitclass
 
-t_final = 1.0
-CFL = 0.10
+t_final = 1.5
+CFL = 0.45
 dt_output = 1e-3
 fig_name_fmt = "./ImplosionFigs/vis_implosion_{:06d}.pdf"
 dat_name_fmt = "./ImplosionData/dat_implosion_{:06d}.h5"
@@ -244,7 +244,7 @@ def calcRHSRiemann(cvars_ddt, cvars_now, dx : float, dy : float):
     rho, u, v, T, p = conservativeToPrimitive(U0, U1, U2, U3, gamma, Rg)
 
     # Compute x-flux: The indices of edges align with the lower sides of the nodes
-    for i in range(N):
+    for i in prange(N):
         for j in range(N):
             u_avg, v_avg, c_avg, h_avg = roeAvg(rho[i-1, j], rho[i, j], \
                                                 u  [i-1, j], u  [i, j], \
@@ -315,7 +315,7 @@ def calcRHSRiemann(cvars_ddt, cvars_now, dx : float, dy : float):
     cvars_ddt[3][:] = ddxStag(F3, -1.0/dx)
             
     # Compute y-flux: The indices of edges align with the lower sides of the nodes
-    for i in range(N):
+    for i in prange(N):
         for j in range(N):
             u_avg, v_avg, c_avg, h_avg = roeAvg(rho[i, j-1], rho[i, j], \
                                                 u  [i, j-1], u  [i, j], \
