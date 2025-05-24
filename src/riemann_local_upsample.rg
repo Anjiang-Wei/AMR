@@ -1207,9 +1207,9 @@ task solver.main()
     -- TODO: Set coordinate on refined mesh
     -- TODO: Redo setInitialCondition on refined mesh
 
-    solver.adjustMesh(rgn_patches_meta, rgn_patches_grid, rgn_patches_cvars_0, patches_meta, patches_grid_int, parts_cvars_0, params);
-    dumpDensity("./data/density_000000.dat", grid.level_max, rgn_patches_cvars_0, rgn_patches_grid, rgn_patches_meta, patches_cvars_0_int, patches_grid_int);
-    writeActiveMeta("./data/mesh_000000.dat", rgn_patches_meta, patches_meta);
+    -- solver.adjustMesh(rgn_patches_meta, rgn_patches_grid, rgn_patches_cvars_0, patches_meta, patches_grid_int, parts_cvars_0, params);
+    -- dumpDensity("./data/density_000000.dat", grid.level_max, rgn_patches_cvars_0, rgn_patches_grid, rgn_patches_meta, patches_cvars_0_int, patches_grid_int);
+    -- writeActiveMeta("./data/mesh_000000.dat", rgn_patches_meta, patches_meta);
     --
     --
     -- TODO: Recursively refine mesh to higher levels
@@ -1247,16 +1247,16 @@ task solver.main()
             patches_meta
         );
 
-        if i % stride == 0 then
-            var filename_dat : &int8 = [&int8] (c.malloc(64*8))
-            var filename_msh : &int8 = [&int8] (c.malloc(64*8))
-            c.sprintf(filename_dat, "./data/density_%06d.dat", i+1);
-            c.sprintf(filename_msh, "./data/mesh_%06d.dat", i+1);
-            dumpDensity(filename_dat, grid.level_max, rgn_patches_cvars_0, rgn_patches_grid, rgn_patches_meta, patches_cvars_0_int, patches_grid_int);
-            writeActiveMeta(filename_msh, rgn_patches_meta, patches_meta);
-        end
+        -- if i % stride == 0 then
+        --     var filename_dat : &int8 = [&int8] (c.malloc(64*8))
+        --     var filename_msh : &int8 = [&int8] (c.malloc(64*8))
+        --     c.sprintf(filename_dat, "./data/density_%06d.dat", i+1);
+        --     c.sprintf(filename_msh, "./data/mesh_%06d.dat", i+1);
+        --     dumpDensity(filename_dat, grid.level_max, rgn_patches_cvars_0, rgn_patches_grid, rgn_patches_meta, patches_cvars_0_int, patches_grid_int);
+        --     writeActiveMeta(filename_msh, rgn_patches_meta, patches_meta);
+        -- end
         -- c.free(filename); -- should not free until dumpDensity finishes
-        solver.adjustMesh(rgn_patches_meta, rgn_patches_grid, rgn_patches_cvars_0, patches_meta, patches_grid_int, parts_cvars_0, params);
+        -- solver.adjustMesh(rgn_patches_meta, rgn_patches_grid, rgn_patches_cvars_0, patches_meta, patches_grid_int, parts_cvars_0, params);
     end
 
 end
