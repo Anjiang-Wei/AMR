@@ -4,7 +4,7 @@ TARGET=test_riemann_local_upsample0
 TARGET_DIR=build
 
 CWD=$PWD
-SRC_FILE=$CWD/$TARGET.rg
+SRC_FILE=$CWD/test_riemann_local_upsample.rg
 INPUT_FILE=$CWD/input_riemann0.rg
 DATA_DIR=$CWD/data
 

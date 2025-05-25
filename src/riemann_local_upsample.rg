@@ -1228,6 +1228,8 @@ task solver.main()
     --         solver.calcRHSLeaf(patches_cvars_1_int[int1d(pid)], patches_cvars_0[int1d(pid)], patches_grad_vel[int1d(pid)], patches_grid[int1d(pid)], patches_meta[int1d(pid)]);
     --     end
     -- end
+    var t_start = c.legion_get_current_time_in_micros() / 1.e6
+    __fence(__execution, __block)
     for i = 0, loop_cnt do
         solver.SSPRK3Launch(
             0,
@@ -1258,7 +1260,9 @@ task solver.main()
         -- c.free(filename); -- should not free until dumpDensity finishes
         -- solver.adjustMesh(rgn_patches_meta, rgn_patches_grid, rgn_patches_cvars_0, patches_meta, patches_grid_int, parts_cvars_0, params);
     end
-
+    __fence(__execution, __block)
+    var t_end = c.legion_get_current_time_in_micros() / 1.e6
+    format.println("Time taken: {} seconds", t_end - t_start)
 end
 
 
