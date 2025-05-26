@@ -7,10 +7,11 @@ import matplotlib.pyplot as plt
 dat_filename_fmt = "/scratch2/anjiang/AMR/tests/ShearData/dat_shear_{:06d}.h5"
 output_prefix    = "./ShearFigs/fig_shear_"
 
-tid_start = 500
-num_tids  = 50
+#tid_start = 697
+#num_tids  = 1
+#tid_list = tid_start + np.arange(num_tids)
 
-tid_list = tid_start + np.arange(num_tids)
+tid_list = [380, 540, 697, 908, 1110, 1470]
 
 
 def main():
@@ -20,12 +21,12 @@ def main():
             rho = dat["rho"][:,:]
             T   = dat["T"  ][:,:]
         temperature (  T, tid)
-        numSchlieren(rho, tid)
+        numSchlieren(rho, tid, vmax=0.5, cmap="gray_r")
 
 
 def temperature(T, tid:int):
     plt.figure(figsize=(8,8))
-    plt.imshow(np.transpose(T), origin='lower', cmap="jet", extent=(0, 1, 0, 1))
+    plt.imshow(np.transpose(T), origin='lower', cmap="hot", interpolation="gaussian", extent=(0, 1, 0, 1))
     plt.gca().set_axis_off()
     plt.tight_layout()
     fig_name = output_prefix + "temperature_{:06d}.pdf".format(tid)
@@ -35,8 +36,8 @@ def temperature(T, tid:int):
 
 
 
-def numSchlieren(rho, tid:int, vmax=0.9):
-    cmap = "gist_stern"
+def numSchlieren(rho, tid:int, vmax=0.9, cmap="gray_r"):
+    #cmap = "gist_stern"
     N  = rho.shape[0]
     i  = np.arange(N)
     ip = (i + 1    ) % N
@@ -46,7 +47,7 @@ def numSchlieren(rho, tid:int, vmax=0.9):
     dr   = np.sqrt(drdx*drdx + drdy*drdy)
     dr[:] /= np.max(dr)
     plt.figure(figsize=(8,8))
-    plt.imshow(np.transpose(dr), origin='lower', cmap=cmap, vmin=0, vmax=vmax, extent=(0, 1, 0, 1))
+    plt.imshow(np.transpose(dr), origin='lower', interpolation="gaussian", cmap=cmap, vmin=0, vmax=vmax, extent=(0, 1, 0, 1))
     plt.gca().set_axis_off()
     plt.tight_layout()
     fig_name = output_prefix + "Schlieren_{:06d}.pdf".format(tid)
