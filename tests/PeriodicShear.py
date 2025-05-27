@@ -18,7 +18,7 @@ r_rho = 2.0
 Rg    = 1.0
 gamma = 1.4
 L     = 0.6
-N     = 512
+N     = 1024
 k_wav = int(5)
 
 
