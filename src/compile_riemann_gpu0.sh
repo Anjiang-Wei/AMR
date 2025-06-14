@@ -33,8 +33,8 @@ else
     cd $TARGET_DIR
 fi
 
-
-OBJNAME=$TARGET regent.py $SRC_FILE -fflow 0 \
+build_option="-fflow 0 -fopenmp 0 -fcuda 1 -fcuda-offline 1 -findex-launch 1 -ffuture 0 -fgpu-arch pascal"
+OBJNAME=$TARGET regent.py $SRC_FILE $build_option \
     && echo "Compile completed."
 
 cd $CWD
