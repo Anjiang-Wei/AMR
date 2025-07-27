@@ -148,7 +148,7 @@ local terra primitiveToConservative (u : double, v : double, T : double, p : dou
 end
 
 -- Calculate the right-hand side of the NS equations
-__demand(__leaf, __inline, __cuda)
+__demand(__leaf, __inline)
 task solver.calcRHSLeaf(
     c_vars_ddt_patch    : region(ispace(int3d), CVARS   ),     -- patch that only contains the interior region
     c_vars_now_patch    : region(ispace(int3d), CVARS   ),     -- patch including the halo layer on each side
@@ -179,7 +179,7 @@ do
     var stencil_ext_ctr    : int = (numerics.stencil_width_ext - 1) / 2;
     var stencil_coll_shift : int = stencil_ext_ctr - stencil_ctr;
 
-    var level_fact  = pow2(meta_patch[meta_patch.bounds.lo].level)    
+    var level_fact  = 2; --pow2(meta_patch[meta_patch.bounds.lo].level)    
     var inv_dx : double = 1.0 / (double(domain_length_x) / (num_grid_points_base_i * level_fact));
     var inv_dy : double = 1.0 / (double(domain_length_y) / (num_grid_points_base_j * level_fact));
 
@@ -422,7 +422,7 @@ end
 function SSPRK3Stage(stage)
     if      stage == 0 then
         -- u1 = u0 + u1 * dt
-        local __demand(__leaf, __inline)
+        local __demand(__cuda)
         task ssprk3Stage(
             dt : double,
             u0 : region(ispace(int3d), CVARS),
@@ -433,7 +433,7 @@ function SSPRK3Stage(stage)
             writes(u1)
         do
             var offset_0 = u0.bounds.lo - u1.bounds.lo;
-            __demand(__vectorize)
+            -- __demand(__vectorize)
             for cij in u1.ispace do
                 u1[cij].mass *= dt
                 u1[cij].mmtx *= dt
@@ -452,7 +452,7 @@ function SSPRK3Stage(stage)
         return ssprk3Stage
     elseif stage == 1 then
         -- u2 = 0.75 * u0 + 0.25 * u1 + 0.25 * dt * u2
-        local __demand(__leaf, __inline)
+        local __demand(__cuda)
         task ssprk3Stage(
             dt : double,
             u0 : region(ispace(int3d), CVARS),
@@ -465,7 +465,7 @@ function SSPRK3Stage(stage)
         do
             var offset_0 = u0.bounds.lo - u2.bounds.lo
             var offset_1 = u1.bounds.lo - u2.bounds.lo
-            __demand(__vectorize)
+            -- __demand(__vectorize)
             for cij in u2.ispace do
                 u2[cij].mass *= 0.25 * dt
                 u2[cij].mmtx *= 0.25 * dt
@@ -484,7 +484,7 @@ function SSPRK3Stage(stage)
         return ssprk3Stage
     elseif stage == 2 then
         -- u0 = (1/3) * u0 + (2/3) * u2 + (2/3) * u1 * dt 
-        local __demand(__leaf, __inline, __cuda)
+        local __demand(__cuda)
         task ssprk3Stage(
             dt : double,
             u0 : region(ispace(int3d), CVARS),
@@ -497,7 +497,7 @@ function SSPRK3Stage(stage)
         do
             var offset_1 = u1.bounds.lo - u0.bounds.lo
             var offset_2 = u2.bounds.lo - u0.bounds.lo
-            __demand(__vectorize)
+            --__demand(__vectorize)
             for cij in u0.ispace do
                 u0[cij].mass *= 1.0 / 3.0
                 u0[cij].mmtx *= 1.0 / 3.0
@@ -698,7 +698,7 @@ do
     c.fclose(file)
 end
 
-__demand(__leaf, __inline, __cuda)
+-- __demand(__cuda)
 task solver.setRefineFlagsLeaf(
     rgn_patch_meta  : region(ispace(int1d), grid_meta_fsp),
     rgn_patch_cvars : region(ispace(int3d),         CVARS),
@@ -771,7 +771,7 @@ do
     end
 end
 
-__demand(__inline)
+-- __demand(__inline)
 task solver.adjustMesh(
     rgn_patches_meta  : region(ispace(int1d), grid_meta_fsp),
     rgn_patches_grid  : region(ispace(int3d),      grid_fsp),
