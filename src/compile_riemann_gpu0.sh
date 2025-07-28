@@ -5,7 +5,7 @@ TARGET_DIR=build
 
 CWD=$PWD
 SRC_FILE=$CWD/test_riemann_local_upsample_gpu0.rg
-INPUT_FILE=$CWD/input_riemann0.rg
+INPUT_FILE=$CWD/input_riemann_GPUbig.rg
 DATA_DIR=$CWD/data
 
 if [ -f $CWD/input.rg ]; then
