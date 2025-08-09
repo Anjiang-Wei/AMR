@@ -1,4 +1,4 @@
-# Task-Based Programming for Adaptive Mesh Refinement in Compressible Flow Simulations (AMR)
+# Task-Based Programming for Adaptive Mesh Refinement in Compressible Flow Simulations
 
 This repository contains the implementation for [**Task-Based Programming for Adaptive Mesh Refinement in Compressible Flow Simulations**](https://arxiv.org/abs/2508.05020), a Regent-based framework (built on the Legion programming model) designed to implement adaptive mesh refinement (AMR) for high-order compressible flow solvers.
 
