@@ -48,19 +48,11 @@ The task-fusion benchmark compares:
 
 ```bash
 source deps/regent-artifact-env.sh
-RUNS=3 PATCH_SIZE=36 LOOP_CNT=4 CPUS=4 PROFILE=1 scripts/reproduce_task_fusion_perf.sh
+scripts/reproduce_task_fusion_perf.sh
 ```
 
-`LOOP_CNT=4` runs 4 solver launches; divide the printed `Time taken` value by
-`LOOP_CNT` to compare against the paper's per-iteration timing. The script
-creates generated source trees under
-`src/build/task_fusion_generated/`, writes a configurable small input, compiles
-both variants, runs CPU-only, prints median wall-clock timings, and writes
-optional Legion Prof logs to `src/profile/task_fusion/`.
-
-`PATCH_SIZE=36` is the recommended starting point for reproducing the paper's
-CPU-only task-fusion claim. You can tune `PATCH_SIZE`, `BASE_PATCHES`, and
-`LOOP_CNT` to explore the sensitivity of the per-iteration timing.
+The script creates generated source trees, compiles both variants, runs
+CPU-only, and prints the timing summary.
 
 ### CUDA Demand
 

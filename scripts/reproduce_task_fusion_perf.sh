@@ -13,13 +13,7 @@ set -euo pipefail
 #
 # Useful overrides:
 #   RUNS=3             # repetitions per variant
-#   LOOP_CNT=4         # solver launches used for the timed loop
-#   PATCH_SIZE=36      # recommended starting point for the CPU-only claim
-#   BASE_PATCHES=6     # base patches in each direction
-#   LEVEL_MAX=2        # maximum refinement level
 #   CPUS=4             # CPU processors used by Legion
-#   UTIL=4             # utility processors
-#   CSIZE=4096         # MB of CPU system memory
 #   PROFILE=1          # emit Legion profiler logs and summary stats
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
