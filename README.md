@@ -54,9 +54,9 @@ scripts/reproduce_task_fusion_perf.sh
 The script creates generated source trees, compiles both variants, runs
 CPU-only, and prints the timing summary.
 
-### CUDA Demand
+### Automated Code Generation for GPUs
 
-The CUDA benchmark compares the CPU and GPU versions of the Riemann
+The GPU code-generation benchmark compares the CPU and GPU versions of the Riemann
 local-upsample kernel on the large `src/input_riemann_GPUbig.rg` input:
 
 - `src/riemann_local_upsample.rg`: CPU version.
@@ -90,10 +90,10 @@ The full Python/Numba simulations can be long-running; if the corresponding
 HDF5 data directories are already present, the visualization scripts can be run
 directly.
 
-### Figure 12
+### Visualization 1
 
-Figure 12, "Visualization of the density in the implosion process at different
-simulation time", corresponds to:
+This visualization corresponds to Figure 12 in the paper, "Visualization of the
+density in the implosion process at different simulation time":
 
 - Simulation and density-frame generation: `tests/Implosion.py`
 - Output data: `tests/ImplosionData/dat_implosion_*.h5`
@@ -107,12 +107,12 @@ python3 Implosion.py
 ```
 
 The script writes one density PDF per saved time frame. Use the selected
-`vis_implosion_*.pdf` frames to assemble the Figure 12 panel.
+`vis_implosion_*.pdf` frames to assemble the visualization panel.
 
-### Figure 13
+### Visualization 2
 
-Figure 13, "Numerical Schlieren imaging of the periodic shear layer flows at
-different simulation time", corresponds to:
+This visualization corresponds to Figure 13 in the paper, "Numerical Schlieren
+imaging of the periodic shear layer flows at different simulation time":
 
 - Simulation and full shear-data generation: `tests/PeriodicShear.py`
 - Schlieren post-processing for selected stages: `tests/vizShear.py`
@@ -148,15 +148,13 @@ The AMR project is structured into three main parts:
   Located at `src/`, this directory contains the core AMR solver code, including task-based mesh refinement/coarsening routines.
 
 - **Compressible flow simulations**  
-  Found in `tests/`, this folder includes canonical examples and tests for compressible flow problems (e.g., Euler equations).
+  The `tests/` directory includes canonical examples and tests for compressible flow problems (e.g., Euler equations).
 
 - **Post-processing for animation**  
   Available in `post/`, this directory provides scripts to generate animations from simulation output.
 
 
 ## Paper and Citation
-
-This project is documented in this paper [arXiv:2508.05020](https://arxiv.org/abs/2508.05020):
 
 ```bibtex
 @article{wei2025taskbased,
