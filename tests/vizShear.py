@@ -3,9 +3,14 @@ import h5py
 import matplotlib
 matplotlib.use("agg")
 import matplotlib.pyplot as plt
+import os
+from pathlib import Path
 
-dat_filename_fmt = "/scratch2/anjiang/AMR/tests/ShearData/dat_shear_{:06d}.h5"
-output_prefix    = "./ShearFigs/fig_shear_"
+SCRIPT_DIR = Path(__file__).resolve().parent
+DATA_DIR = Path(os.getenv("SHEAR_DATA_DIR", SCRIPT_DIR / "ShearData"))
+OUTPUT_DIR = Path(os.getenv("SHEAR_FIG_DIR", SCRIPT_DIR / "ShearFigs"))
+dat_filename_fmt = str(DATA_DIR / "dat_shear_{:06d}.h5")
+output_prefix = str(OUTPUT_DIR / "fig_shear_")
 
 #tid_start = 697
 #num_tids  = 1
@@ -15,6 +20,7 @@ tid_list = [380, 540, 697, 908, 1110, 1470]
 
 
 def main():
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     for tid in tid_list:
         filename = dat_filename_fmt.format(tid)
         with h5py.File(filename, 'r') as dat:

@@ -31,6 +31,10 @@ local AllPartitionGroupGradVel  = grid.groupAllPartitions(GRAD_VEL)
 
 local solver = {}
 
+local BENCH_LOOP_CNT = tonumber(os.getenv("AMR_LOOP_CNT") or "1")
+local BENCH_TIME_STEP = tonumber(os.getenv("AMR_TIME_STEP") or "1e-6")
+local BENCH_STRIDE = tonumber(os.getenv("AMR_STRIDE") or "1")
+
 struct TunableParams {
     refine_score_threshold  : double;
     refine_count_threshold  :    int;
@@ -39,12 +43,11 @@ struct TunableParams {
 };
 
 terra getTunableParams(args_offset : int) : TunableParams
-    var args = c.legion_runtime_get_input_args();
     var params : TunableParams;
-    params.refine_score_threshold  = c.atof(args.argv[args_offset + 0]);
-    params.refine_count_threshold  = c.atoi(args.argv[args_offset + 1]);
-    params.coarsen_score_threshold = c.atof(args.argv[args_offset + 2]);
-    params.coarsen_count_threshold = c.atoi(args.argv[args_offset + 3]);
+    params.refine_score_threshold  = 0.1;
+    params.refine_count_threshold  = 1;
+    params.coarsen_score_threshold = 0.1;
+    params.coarsen_count_threshold = 1;
     return params;
 end
 
@@ -914,10 +917,9 @@ end -- task
 
 task solver.main()
 
-    var args = c.legion_runtime_get_input_args()
-    var loop_cnt:     int = c.atoi(args.argv[1]);
-    var time_step: double = c.atof(args.argv[2]);
-    var stride:       int = c.atoi(args.argv[3]);
+    var loop_cnt:     int = [BENCH_LOOP_CNT];
+    var time_step: double = [BENCH_TIME_STEP];
+    var stride:       int = [BENCH_STRIDE];
     var params : TunableParams = getTunableParams(4);
     -- 
     c.printf("Solver initialization:")

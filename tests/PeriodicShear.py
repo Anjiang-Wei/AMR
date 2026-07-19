@@ -537,9 +537,8 @@ def weno5JSInterp(fm2, fm1, f00, fp1, fp2):
     return (a0 * q0 + a1 * q1 + a2 * q2) / (a0 + a1 + a2)
 
 def create_output_dir():
-    # ./ImplosionData/ and ./ImplosionFigs/
-    os.makedirs("ImplosionData/", exist_ok=True)
-    os.makedirs("ImplosionFigs/", exist_ok=True)
+    os.makedirs("ShearData/", exist_ok=True)
+    os.makedirs("ShearFigs/", exist_ok=True)
 
 if __name__ == "__main__":
     create_output_dir()
