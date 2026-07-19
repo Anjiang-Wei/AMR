@@ -4,12 +4,9 @@ This repository contains the implementation for [**Task-Based Programming for Ad
 
 ## Installation
 
-The code is built using **Regent**, a high-level programming language for the Legion programming model. Please follow the Regent installation guide:
-
-- Official language site: https://regent-lang.org/
-- Installation instructions: https://github.com/StanfordLegion/legion/tree/stable/language
-
-For paper-artifact reproduction, use the pinned Legion/Regent commit:
+The code is built using **Regent**, a high-level programming language for the
+Legion programming model. To install the pinned Legion/Regent revision used for
+paper-artifact reproduction, run:
 
 ```bash
 module load gcc/9.4.0 2>/dev/null || true
@@ -19,19 +16,8 @@ scripts/install_regent_legion.sh
 source deps/regent-artifact-env.sh
 ```
 
-The install script clones `StanfordLegion/legion`, checks out commit
-`c61071541218747e35767317f6f89b83f374f264`, and builds Regent with
-`language/scripts/setup_env.py`.
-
-If `deps/regent-artifact-env.sh` is not present because Regent was installed
-manually, export the paths directly:
-
-```bash
-export LEGION_DIR="$PWD/deps/legion-artifact/legion"
-export LG_RT_DIR=$LEGION_DIR/runtime
-export PATH=$LEGION_DIR/language:$PATH
-export LD_LIBRARY_PATH=$LEGION_DIR/bindings/regent:${LD_LIBRARY_PATH:-}
-```
+The script installs Legion/Regent under `deps/legion-artifact/` and writes
+`deps/regent-artifact-env.sh`.
 
 Python scripts for demonstrative simulations and plotting use `numpy`, `numba`,
 `h5py`, and `matplotlib`. Install them with either:
@@ -46,26 +32,10 @@ or:
 python3 -m pip install numpy numba h5py matplotlib
 ```
 
-## Compilation
-
-The reproduction scripts below compile their own benchmark binaries. To compile
-the original Regent drivers manually:
-
-```bash
-source deps/regent-artifact-env.sh
-
-cd src
-./compile_riemann_local_upsample.sh
-./compile_riemann_noinline.sh
-./compile_riemann_gpu0.sh
-```
-
-The scripts set `src/input.rg` to the required input file while compiling.
-
 ## Performance Reproduction
 
-Two scripts are provided under `scripts/` for the performance claims in the
-paper. Run them from the repository root after sourcing the Regent environment.
+The reproduction scripts compile and run the benchmark binaries. Run them from
+the repository root after sourcing the Regent environment.
 
 ### Task Fusion
 
